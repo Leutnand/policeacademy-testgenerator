@@ -1,0 +1,43 @@
+{% load static %}
+<!doctype html>
+<html lang="de" data-theme="light">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>{% block title %}Police Academy Test Generator{% endblock %} · Police Academy</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700;800&family=Source+Sans+3:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{% static 'css/app.css' %}">
+  <link rel="stylesheet" href="{% static 'css/academy.css' %}">
+  <script>try{document.documentElement.dataset.theme=localStorage.getItem('police-academy-theme')||'light'}catch(e){}</script>
+  {% block head %}{% endblock %}
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="{% url 'dashboard' %}" aria-label="Police Academy Test Generator"><span class="brand-mark" aria-hidden="true"><i class="book-page book-page-left"></i><i class="book-page book-page-right"></i></span><span class="brand-name"><small>SAN ANDREAS POLICE DEPARTMENT</small><strong>POLICE ACADEMY</strong><em>TEST GENERATOR</em></span></a>
+    <nav class="nav-links" aria-label="Academy-Bereiche">
+      {% if user.is_authenticated %}
+        {% if has_viewable_question_pools %}<a class="{% if request.resolver_match.url_name == 'admin_dashboard' or request.resolver_match.url_name == 'question_create' or request.resolver_match.url_name == 'question_edit' %}active{% endif %}" href="{% url 'admin_dashboard' %}"><span class="nav-index">01</span>Fragenbank</a>{% endif %}
+        {% if has_generatable_question_pools %}<a class="{% if request.resolver_match.url_name == 'generate_test' %}active{% endif %}" href="{% url 'generate_test' %}"><span class="nav-index">02</span>Testläufe</a>{% endif %}
+        {% if has_viewable_submission_pools %}<a class="{% if request.resolver_match.url_name == 'submissions' or request.resolver_match.url_name == 'submission_detail' %}active{% endif %}" href="{% url 'submissions' %}"><span class="nav-index">03</span>Auswertung</a>{% endif %}
+        {% if can_manage_users %}<a class="{% if request.resolver_match.url_name == 'users_dashboard' or request.resolver_match.url_name == 'user_create' or request.resolver_match.url_name == 'user_edit' or request.resolver_match.url_name == 'permissions_dashboard' or request.resolver_match.url_name == 'permission_group_create' or request.resolver_match.url_name == 'permission_group_edit' or request.resolver_match.url_name == 'permission_user_edit' %}active{% endif %}" href="{% url 'users_dashboard' %}"><span class="nav-index">04</span>Personal</a>{% endif %}
+        {% if can_view_audit_logs %}<a class="{% if request.resolver_match.url_name == 'audit_logs' %}active{% endif %}" href="{% url 'audit_logs' %}"><span class="nav-index">05</span>Systemlog</a>{% endif %}
+      {% endif %}
+    </nav>
+    <div class="nav-actions">
+      <!-- <span class="network-status"><i></i> INTERN</span> -->
+      <button class="icon-button" type="button" id="theme-toggle" aria-label="Darstellung wechseln" title="Darstellung wechseln"><span id="theme-icon">◐</span></button>
+      {% if user.is_authenticated %}<span class="user-label"><small>ACADEMY STAFF</small><strong>{{ user.get_short_name|default:user.username }}</strong></span><form method="post" action="{% url 'logout' %}">{% csrf_token %}<button class="text-button" type="submit">Abmelden <span aria-hidden="true">↗</span></button></form>{% endif %}
+    </div>
+  </header>
+  <div class="academy-ribbon"><div><span class="ribbon-star">★</span><span>TRAINING DIVISION</span><span class="ribbon-divider">/</span><span>PERSONNEL &amp; STANDARDS</span></div></div>
+  <main class="page-shell">
+    {% if messages %}<div class="messages">{% for message in messages %}<div class="message {{ message.tags }}">{{ message }}</div>{% endfor %}</div>{% endif %}
+    {% if request.resolver_match.url_name == 'users_dashboard' or request.resolver_match.url_name == 'user_create' or request.resolver_match.url_name == 'user_edit' or request.resolver_match.url_name == 'permissions_dashboard' or request.resolver_match.url_name == 'permission_group_create' or request.resolver_match.url_name == 'permission_group_edit' or request.resolver_match.url_name == 'permission_user_edit' %}<nav class="personnel-tabs" aria-label="Personalverwaltung">{% if can_manage_users %}<a class="{% if request.resolver_match.url_name == 'users_dashboard' or request.resolver_match.url_name == 'user_create' or request.resolver_match.url_name == 'user_edit' or request.resolver_match.url_name == 'permission_user_edit' %}active{% endif %}" href="{% url 'users_dashboard' %}">Mitarbeitende</a>{% endif %}{% if can_manage_permissions %}<a class="{% if request.resolver_match.url_name == 'permissions_dashboard' or request.resolver_match.url_name == 'permission_group_create' or request.resolver_match.url_name == 'permission_group_edit' %}active{% endif %}" href="{% url 'permissions_dashboard' %}">Rechtegruppen</a>{% endif %}</nav>{% endif %}
+    {% block content %}{% endblock %}
+  </main>
+  <footer class="academy-footer"><div class="footer-insignia" aria-hidden="true"><i class="book-page book-page-left"></i><i class="book-page book-page-right"></i></div><span><strong>SAN ANDREAS POLICE DEPARTMENT</strong><small>POLICE ACADEMY · PERSONNEL &amp; STANDARDS</small></span><span class="footer-classification"><i></i> INTERNAL TRAINING SYSTEM</span></footer>
+  <script src="{% static 'js/app.js' %}" defer></script>
+  {% block scripts %}{% endblock %}
+</body>
+</html>

@@ -1,0 +1,10 @@
+{% extends 'base.html' %}
+{% block title %}Anmeldung{% endblock %}
+{% block content %}
+<section class="auth-layout">
+  <div class="auth-aside"><span class="eyebrow">SAN ANDREAS POLICE DEPARTMENT / ACADEMY</span><h1>Train with<br>purpose.<br><em>Serve with honor.</em></h1><p>Prüfungsverwaltung für die Police Academy. Fragen, Testläufe und Bewertungen an einem Ort.</p><div class="aside-index">SAPD <span>POLICE ACADEMY</span> / PERSONNEL TRAINING</div></div>
+  <div class="auth-panel"><div class="section-kicker">MITARBEITERZUGANG</div><h2>Willkommen zurück</h2><p class="muted">Melde dich mit deinem Teamkonto an.</p>
+    <form method="post" class="stack-form">{% csrf_token %}<label>Benutzername<input name="username" autocomplete="username" required autofocus></label><label>Passwort<input type="password" name="password" autocomplete="current-password" required></label><button class="button primary full" type="submit">Anmelden <span aria-hidden="true">→</span></button></form>
+  </div>
+</section>
+{% endblock %}

@@ -1,0 +1,3 @@
+{% extends 'base.html' %}
+{% block title %}Zugriff verweigert{% endblock %}
+{% block content %}<section class="completion access-denied"><div class="access-symbol muted-symbol">403</div><div class="section-kicker">ZUGRIFFSKONTROLLE</div><h1>Zugriff verweigert.</h1><p class="muted">Für diese Aktion fehlt die erforderliche Berechtigung{% if capability %}: <code>{{ capability }}</code>{% endif %}. Bitte wende dich an einen Administrator, wenn du Zugriff benötigst.</p><a class="button quiet" href="{% url 'dashboard' %}">Zurück zum Arbeitsbereich</a></section>{% endblock %}

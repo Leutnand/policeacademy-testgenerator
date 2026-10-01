@@ -1,0 +1,32 @@
+services:
+  web:
+    build: .
+    container_name: police-academy-web
+    restart: unless-stopped
+    ports:
+      - "${PORT:-8000}:8000"
+    environment:
+      DJANGO_SECRET_KEY: "${DJANGO_SECRET_KEY:?Set DJANGO_SECRET_KEY in Portainer}"
+      DJANGO_DEBUG: "False"
+      DJANGO_ALLOWED_HOSTS: "${DJANGO_ALLOWED_HOSTS:?Set DJANGO_ALLOWED_HOSTS in Portainer}"
+      CSRF_TRUSTED_ORIGINS: "${CSRF_TRUSTED_ORIGINS:-}"
+      DJANGO_SECURE_SSL_REDIRECT: "${DJANGO_SECURE_SSL_REDIRECT:-True}"
+      DJANGO_SECURE_COOKIES: "${DJANGO_SECURE_COOKIES:-True}"
+      DJANGO_TRUST_PROXY_SSL: "${DJANGO_TRUST_PROXY_SSL:-True}"
+      AUDIT_LOG_RETENTION_DAYS: "${AUDIT_LOG_RETENTION_DAYS:-180}"
+      AUDIT_LOG_MAX_ENTRIES: "${AUDIT_LOG_MAX_ENTRIES:-50000}"
+      DATABASE_PATH: /data/db.sqlite3
+      STATIC_ROOT: /app/staticfiles
+    volumes:
+      - sqlite_data:/data
+      - static_data:/app/staticfiles
+    healthcheck:
+      test: ["CMD", "python", "-c", "import socket; socket.create_connection(('127.0.0.1', 8000), 5).close()"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+volumes:
+  sqlite_data:
+  static_data:
