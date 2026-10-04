@@ -17,9 +17,11 @@ services:
       AUDIT_LOG_MAX_ENTRIES: "${AUDIT_LOG_MAX_ENTRIES:-50000}"
       DATABASE_PATH: /data/db.sqlite3
       STATIC_ROOT: /app/staticfiles
+      MEDIA_ROOT: /app/media
     volumes:
       - sqlite_data:/data
       - static_data:/app/staticfiles
+      - media_data:/app/media
     healthcheck:
       test: ["CMD", "python", "-c", "import socket; socket.create_connection(('127.0.0.1', 8000), 5).close()"]
       interval: 30s
@@ -30,3 +32,4 @@ services:
 volumes:
   sqlite_data:
   static_data:
+  media_data:

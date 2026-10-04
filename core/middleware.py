@@ -1,14 +1,42 @@
 """Protokolliert jeden nicht-statischen HTTP-Aufruf ohne POST-Nutzdaten."""
+import hashlib
 import logging
 from threading import Lock
 from time import monotonic
 from django.db import DatabaseError
+from django.shortcuts import redirect
 from django.urls import resolve, Resolver404
 from django.utils import timezone
 from .audit import client_ip, prune_audit_logs
-from .models import AuditLog
+from .models import AuditLog, StaffProfile, ToolSettings
 
 logger = logging.getLogger(__name__)
+
+
+class PrivacyPolicyMiddleware:
+    """Hält angemeldete Mitarbeiter bis zur Bestätigung der aktuellen Datenschutzerklärung zurück."""
+    allowed_routes = {"privacy_policy", "privacy_accept", "site_icon", "tool_settings", "logout"}
+
+    def __init__(self, get_response):
+        self.get_response = get_response
+
+    def __call__(self, request):
+        user = getattr(request, "user", None)
+        if user and user.is_authenticated:
+            policy = ToolSettings.objects.filter(pk=1).values_list("privacy_policy", flat=True).first()
+            if policy and policy.strip():
+                try:
+                    route_name = resolve(request.path_info).view_name
+                except Resolver404:
+                    route_name = ""
+                if route_name not in self.allowed_routes:
+                    current_hash = hashlib.sha256(policy.strip().encode("utf-8")).hexdigest()
+                    accepted_hash = StaffProfile.objects.filter(user_id=user.pk).values_list(
+                        "accepted_privacy_hash", flat=True,
+                    ).first()
+                    if accepted_hash != current_hash:
+                        return redirect("privacy_accept")
+        return self.get_response(request)
 
 
 class AuditRequestMiddleware:

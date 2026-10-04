@@ -28,7 +28,7 @@ CSRF_TRUSTED_ORIGINS = [
 ]
 
 INSTALLED_APPS = [
-    "django.contrib.admin", "django.contrib.auth", "django.contrib.contenttypes",
+    "django.contrib.auth", "django.contrib.contenttypes",
     "django.contrib.sessions", "django.contrib.messages", "django.contrib.staticfiles",
     "core.apps.CoreConfig",
 ]
@@ -37,7 +37,9 @@ MIDDLEWARE = [
     *(["whitenoise.middleware.WhiteNoiseMiddleware"] if not DEBUG else []),
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware", "django.middleware.csrf.CsrfViewMiddleware",
-    "django.contrib.auth.middleware.AuthenticationMiddleware", "core.middleware.AuditRequestMiddleware",
+    "django.contrib.auth.middleware.AuthenticationMiddleware",
+    "core.middleware.PrivacyPolicyMiddleware",
+    "core.middleware.AuditRequestMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
@@ -49,6 +51,7 @@ TEMPLATES = [{
         "django.template.context_processors.debug", "django.template.context_processors.request",
         "django.contrib.auth.context_processors.auth", "django.contrib.messages.context_processors.messages",
         "core.permissions.navigation_permissions",
+        "core.context_processors.tool_configuration",
     ]},
 }]
 WSGI_APPLICATION = "testgenerator.wsgi.application"
@@ -66,6 +69,8 @@ USE_TZ = True
 STATIC_URL = "/static/"
 STATICFILES_DIRS = [BASE_DIR / "static"]
 STATIC_ROOT = Path(os.environ.get("STATIC_ROOT", str(BASE_DIR / "staticfiles")))
+MEDIA_URL = "/media/"
+MEDIA_ROOT = Path(os.environ.get("MEDIA_ROOT", str(BASE_DIR / "media")))
 STORAGES = {
     "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
     "staticfiles": {

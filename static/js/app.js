@@ -14,20 +14,70 @@ document.addEventListener('DOMContentLoaded', () => {
   document.querySelectorAll('[data-copy-target], [data-copy-text]').forEach((button) => {
     button.addEventListener('click', async () => {
       const target = button.dataset.copyTarget ? document.getElementById(button.dataset.copyTarget)?.value : button.dataset.copyText;
-      if (!target) return;
+      if (!target) {
+        button.textContent = 'Nichts zu kopieren';
+        return;
+      }
       try {
         await navigator.clipboard.writeText(target);
         const previous = button.textContent;
         button.textContent = 'Kopiert';
         window.setTimeout(() => { button.textContent = previous; }, 1500);
       } catch (_) {
-        const input = document.getElementById(button.dataset.copyTarget);
-        input?.select();
-        document.execCommand('copy');
+        const temporaryInput = document.createElement('textarea');
+        temporaryInput.value = target;
+        temporaryInput.setAttribute('readonly', '');
+        temporaryInput.style.position = 'fixed';
+        temporaryInput.style.opacity = '0';
+        document.body.append(temporaryInput);
+        temporaryInput.select();
+        const copied = document.execCommand('copy');
+        temporaryInput.remove();
+        const previous = button.textContent;
+        button.textContent = copied ? 'Kopiert' : 'Kopieren fehlgeschlagen';
+        window.setTimeout(() => { button.textContent = previous; }, 2000);
       }
     });
   });
   document.querySelector('[data-modal-close]')?.addEventListener('click', () => document.querySelector('.modal-backdrop')?.remove());
+  document.querySelector('[data-modal-print]')?.addEventListener('click', () => window.print());
+
+  document.querySelectorAll('input[type="file"][id^="csv-import-"]').forEach((input) => {
+    input.addEventListener('change', async () => {
+      const file = input.files?.[0];
+      if (!file) return;
+      let recordCount = 0;
+      try {
+        const text = await file.text();
+        let inQuotes = false;
+        let recordHasContent = false;
+        let dataRows = 0;
+        for (let index = 0; index < text.length; index += 1) {
+          const character = text[index];
+          if (character === '"') {
+            if (inQuotes && text[index + 1] === '"') index += 1;
+            else inQuotes = !inQuotes;
+          } else if (!inQuotes && (character === '\n' || character === '\r')) {
+            if (character === '\r' && text[index + 1] === '\n') index += 1;
+            if (recordHasContent) dataRows += 1;
+            recordHasContent = false;
+          } else if (!/\s/.test(character)) {
+            recordHasContent = true;
+          }
+        }
+        if (recordHasContent) dataRows += 1;
+        recordCount = Math.max(0, dataRows - 1);
+      } catch (_) {
+        recordCount = 0;
+      }
+      const countMessage = recordCount ? `Voraussichtlich ${recordCount} Fragen` : 'Keine Datenzeilen erkannt';
+      if (!window.confirm(`${file.name} (${Math.ceil(file.size / 1024)} KB)\n${countMessage}.\nDie Fragen werden ergänzt, bestehende Fragen bleiben unverändert. Import starten?`)) {
+        input.value = '';
+        return;
+      }
+      input.form.requestSubmit();
+    });
+  });
 
   const poolSelect = document.querySelector('#id_question_pool');
   const poolSummary = document.querySelector('#selected-pool-summary');
@@ -102,5 +152,36 @@ document.addEventListener('DOMContentLoaded', () => {
     typeSelect?.addEventListener('change', syncQuestionType);
     renumberOptions();
     syncQuestionType();
+  }
+
+  const settingsForm = document.querySelector('.tool-settings-form');
+  if (settingsForm) {
+    const siteName = settingsForm.querySelector('[data-settings-site-name]');
+    const department = settingsForm.querySelector('[data-settings-department]');
+    const heading = settingsForm.querySelector('[data-settings-heading]');
+    const loginText = settingsForm.querySelector('[data-settings-login-text]');
+    const privacyPolicy = settingsForm.querySelector('[data-original-privacy]');
+    const preview = {
+      department: document.querySelector('[data-preview-department]'),
+      heading: document.querySelector('[data-preview-heading]'),
+      text: document.querySelector('[data-preview-text]'),
+      footerDepartment: document.querySelector('[data-preview-footer-department]'),
+      footerSite: document.querySelector('[data-preview-footer-site]'),
+    };
+    const updatePreview = () => {
+      preview.department.textContent = `${department.value} / ACADEMY`;
+      preview.heading.textContent = heading.value;
+      preview.text.textContent = loginText.value;
+      preview.footerDepartment.textContent = department.value;
+      preview.footerSite.textContent = siteName.value;
+    };
+    [siteName, department, heading, loginText].forEach((input) => input.addEventListener('input', updatePreview));
+    updatePreview();
+    settingsForm.addEventListener('submit', (event) => {
+      if (privacyPolicy.value === privacyPolicy.dataset.originalPrivacy) return;
+      if (!window.confirm('Die Datenschutzerklärung wurde geändert. Mitarbeitende müssen der neuen Fassung erneut zustimmen. Trotzdem speichern?')) {
+        event.preventDefault();
+      }
+    });
   }
 });

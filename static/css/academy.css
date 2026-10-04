@@ -761,13 +761,22 @@ td.row-actions {
 }
 
 .academy-footer {
-  display: flex;
-  min-height: 76px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  min-height: 84px;
   align-items: center;
-  gap: 12px;
-  padding: 12px max(30px, calc((100vw - 1320px) / 2));
+  gap: 24px;
+  padding: 14px max(30px, calc((100vw - 1320px) / 2));
+  border-top: 2px solid var(--lapd-gold);
   background: var(--lapd-navy);
   color: #f0f2f2;
+}
+
+.footer-brand {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 11px;
 }
 
 .footer-insignia {
@@ -786,9 +795,10 @@ td.row-actions {
   border-width: 1.5px;
 }
 
-.academy-footer>span:nth-child(2) {
+.footer-brand-copy {
   display: grid;
-  gap: 2px;
+  min-width: 0;
+  gap: 3px;
 }
 
 .academy-footer strong {
@@ -796,8 +806,19 @@ td.row-actions {
 }
 
 .academy-footer small {
+  overflow: hidden;
   color: #bac6d1;
   font-size: 9px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.footer-credit {
+  color: #d4dce5;
+  font-size: 11px;
+  letter-spacing: .02em !important;
+  text-align: center;
+  white-space: nowrap;
 }
 
 .footer-classification {
@@ -813,6 +834,86 @@ td.row-actions {
 .footer-classification i {
   width: 6px;
   height: 6px;
+}
+
+.footer-links {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+  justify-self: end;
+  font-size: 11px;
+}
+
+.footer-links a {
+  display: inline-flex;
+  min-height: 34px;
+  align-items: center;
+  gap: 8px;
+  padding: 0 11px;
+  border: 1px solid rgba(186, 198, 209, .28);
+  border-radius: 4px;
+  color: #d5dde5;
+  transition: border-color .16s, background .16s, color .16s;
+}
+
+.footer-links a:hover {
+  color: #fff;
+  border-color: var(--lapd-gold);
+  background: rgba(255, 255, 255, .06);
+}
+
+.footer-links a span {
+  color: var(--lapd-gold);
+}
+
+.review-page-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.review-save-bottom {
+  justify-content: center;
+  margin-top: 24px;
+}
+
+.legal-document {
+  margin: 0 0 24px;
+  padding: 26px 30px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface);
+  line-height: 1.7;
+  scroll-margin-top: 24px;
+}
+
+.legal-document h1,
+.legal-document h2 {
+  margin-top: 0;
+}
+
+.privacy-acceptance h1 {
+  margin: 8px 0 22px;
+  font: 700 34px 'Barlow Condensed', sans-serif;
+}
+
+.privacy-acceptance .stack-form {
+  margin-top: 26px;
+}
+
+.tool-settings-form {
+  max-width: 880px;
+}
+
+.tool-settings-form textarea {
+  min-height: 100px;
+}
+
+.tool-settings-form input[type="number"] {
+  max-width: 220px;
 }
 
 .you-label,
@@ -938,8 +1039,125 @@ td.row-actions {
 }
 
 .pool-selector select {
+  width: 100%;
   min-height: 42px;
   padding: 8px 11px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--surface);
+  color: var(--text);
+}
+
+.question-filter {
+  display: grid;
+  grid-template-columns: minmax(220px, 1.3fr) minmax(170px, 1fr) minmax(170px, 1fr) auto;
+  align-items: end;
+  gap: 12px;
+}
+
+.question-filter-field {
+  display: grid;
+  min-width: 0;
+  gap: 6px;
+}
+
+.question-filter-field label {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.question-filter-field input[type="search"],
+.question-filter-field select,
+.results-filter input[type="search"],
+.results-filter input[type="date"] {
+  width: 100%;
+  min-height: 38px;
+  padding: 7px 10px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--surface);
+  color: var(--text);
+}
+
+.question-filter-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.filter-check {
+  margin: 0 4px;
+}
+
+.login-preview {
+  margin-top: 24px;
+  padding: 24px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface-soft);
+}
+
+.login-preview h2 {
+  margin: 8px 0;
+  white-space: pre-line;
+}
+
+.effective-permissions {
+  margin: 20px 0;
+  padding: 16px 20px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface-soft);
+}
+
+.effective-permissions summary {
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.effective-permissions ul {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 6px 24px;
+  padding-left: 20px;
+}
+
+.invitation-actions {
+  justify-content: center;
+  margin: 18px 0;
+}
+
+@media print {
+  body * {
+    visibility: hidden !important;
+  }
+
+  .result-modal,
+  .result-modal * {
+    visibility: visible !important;
+  }
+
+  .modal-backdrop {
+    position: static;
+    padding: 0;
+    background: transparent;
+  }
+
+  .result-modal {
+    width: 100%;
+    max-width: none;
+    box-shadow: none;
+  }
+
+  .modal-close,
+  .result-modal > .success-mark,
+  .result-modal > .button,
+  [data-modal-print],
+  [data-copy-target],
+  [data-copy-text] {
+    display: none !important;
+  }
   border: 1px solid var(--line);
   border-left: 3px solid var(--lapd-gold);
   border-radius: 4px;
@@ -1210,6 +1428,14 @@ td.row-actions {
 }
 
 @media (max-width: 950px) {
+  .question-filter {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .question-filter-actions {
+    grid-column: 1 / -1;
+  }
+
   .topbar {
     gap: 20px;
     padding-right: 20px;
@@ -1576,7 +1802,6 @@ td.row-actions {
     grid-column: 1 / -1;
     flex-wrap: wrap;
   }
-
   .academy-staff-table td:nth-child(3)::before {
     content: 'RECHTEGRUPPEN';
     flex-basis: 100%;
@@ -1713,6 +1938,32 @@ td.row-actions {
     padding-left: 14px;
   }
 
+  .academy-footer {
+    grid-template-columns: 1fr auto;
+    row-gap: 14px;
+    justify-items: center;
+    padding-top: 16px;
+    padding-bottom: 16px;
+  }
+
+  .footer-brand {
+    grid-column: 1 / -1;
+    justify-content: center;
+    text-align: center;
+  }
+
+  .footer-credit {
+    grid-column: 1;
+    grid-row: 2;
+    justify-self: end;
+  }
+
+  .footer-links {
+    grid-column: 2;
+    grid-row: 2;
+    justify-self: start;
+  }
+
   .footer-insignia {
     width: 35px;
     height: 31px;
@@ -1724,10 +1975,5 @@ td.row-actions {
 
   .academy-footer small {
     font-size: 7px;
-  }
-
-  .footer-classification {
-    max-width: 90px;
-    line-height: 1.2;
   }
 }

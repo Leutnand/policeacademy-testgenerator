@@ -1,13 +1,17 @@
 """Automatisierte Regressionstests für Auswahl, Geheimnisse, RBAC und OTP."""
 from datetime import timedelta
+from decimal import Decimal
+from tempfile import TemporaryDirectory
+from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.contrib.auth.hashers import check_password
 from django.contrib.auth.models import Group, Permission
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase, override_settings
 from django.utils import timezone
 from django.urls import reverse
 from django.contrib.auth.hashers import make_password
-from .models import AuditLog, Question, QuestionPool, Submission, TestQuestion, TestSession
+from .models import AuditLog, Question, QuestionPool, StaffProfile, Submission, TestQuestion, TestSession, ToolSettings
 from .permissions import ADMINISTRATOR_GROUP, has_pool_access, pool_permission_codename
 from .audit import prune_audit_logs
 from .services import TestGenerationError, generate_test
@@ -44,6 +48,22 @@ class TestGenerationTests(TestCase):
         with self.assertRaises(TestGenerationError):
             generate_test(99, self.user, self.question_pool)
 
+    def test_generated_test_stores_optional_time_limit(self):
+        """Der Generator speichert das ausgewählte Zeitlimit am neuen Testlauf."""
+        administrator = get_user_model().objects.create_superuser(
+            username="timed-test-admin", email="timed@example.com", password="strong-password",
+        )
+        self.client.force_login(administrator)
+        response = self.client.post(reverse("generate_test"), {
+            "question_pool": self.question_pool.pk,
+            "question_count": 3,
+            "time_limit_minutes": 10,
+        })
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Zeitlimit: 10 Minuten")
+        test = TestSession.objects.get(created_by=administrator)
+        self.assertEqual(test.time_limit_minutes, 10)
+
     def test_generated_test_never_mixes_another_pool(self):
         """Sergeant-Test übernimmt nur Fragen aus seinem eigenen Pool."""
         sergeant_pool = QuestionPool.objects.create(name="Sergeant-Test")
@@ -61,12 +81,12 @@ class TestGenerationTests(TestCase):
     def test_pool_permissions_are_created_updated_and_deleted_with_pool(self):
         """Jeder Pool erhält vier eigene Permissions, die beim Löschen entfernt werden."""
         question_pool = QuestionPool.objects.create(name="Dynamik-Prüfung")
-        actions = ["view", "edit", "generate", "submissions"]
+        actions = ["view", "edit", "import_export", "generate", "submissions"]
         permissions = [
             Permission.objects.get(content_type__app_label="core", codename=pool_permission_codename(action, question_pool))
             for action in actions
         ]
-        self.assertEqual(len(permissions), 4)
+        self.assertEqual(len(permissions), 5)
         self.assertTrue(all(question_pool.name in permission.name for permission in permissions))
         question_pool.name = "Umbenannte Prüfung"
         question_pool.save()
@@ -112,11 +132,14 @@ class ApplicantFlowTests(TestCase):
         self.assertRedirects(response, access_url)
         response = self.client.get(access_url)
         self.assertContains(response, "Welche Option?")
+        self.assertContains(response, "academy-test-draft")
+        self.assertContains(response, "beforeunload")
         self.assertNotContains(response, "Geheime Musterlösung")
         self.assertNotContains(response, "is_correct")
         self.assertNotContains(response, "5.00")
         response = self.client.post(access_url, {"question_1": "0", "question_2": "Ausführliche Antwort"})
         self.assertContains(response, "Alles angekommen.")
+        self.assertContains(response, "sessionStorage.removeItem")
         self.test.refresh_from_db()
         self.assertEqual(self.test.status, TestSession.Status.COMPLETED)
         self.assertEqual(self.test.examinee_name, "Alex Morgan")
@@ -140,6 +163,128 @@ class ApplicantFlowTests(TestCase):
             action="test.otp.rejected",
             object_id=str(self.test.pk),
         ).exists())
+
+    def test_timed_test_starts_on_exam_page_and_auto_submits_when_expired(self):
+        """Zeitlimit startet mit der Fragenseite und wird serverseitig erzwungen."""
+        self.test.time_limit_minutes = 1
+        self.test.save(update_fields=["time_limit_minutes"])
+        access_url = reverse("take_test", args=[self.test.pk])
+        self.client.post(access_url, {"otp": "123456"})
+        self.client.post(access_url, {"examinee_name": "Timed Applicant"})
+        response = self.client.get(access_url)
+        self.assertEqual(response.context["remaining_seconds"], 60)
+        self.assertContains(response, "Verbleibende Zeit")
+        self.test.refresh_from_db()
+        self.assertIsNotNone(self.test.started_at)
+        self.test.started_at = timezone.now() - timedelta(seconds=61)
+        self.test.save(update_fields=["started_at"])
+
+        response = self.client.get(access_url)
+        self.assertContains(response, "Alles angekommen.")
+        self.test.refresh_from_db()
+        self.assertEqual(self.test.status, TestSession.Status.COMPLETED)
+        self.assertEqual(self.test.elapsed_seconds, 60)
+        self.assertEqual(self.test.time_taken_display, "1:00")
+        self.assertTrue(AuditLog.objects.filter(
+            action="submission.timed_out", object_id=str(self.test.pk),
+        ).exists())
+        self.assertEqual(Submission.objects.filter(test=self.test).count(), 2)
+        self.assertEqual(Submission.objects.get(test_question__position=1).answer, {"value": ""})
+        administrator = get_user_model().objects.create_superuser(
+            username="timed-review-admin", email="timed-review@example.com", password="strong-password",
+        )
+        self.client.force_login(administrator)
+        self.assertContains(self.client.get(reverse("submissions")), "1:00")
+        self.assertContains(
+            self.client.get(reverse("submission_detail", args=[self.test.pk])), "Dauer 1:00",
+        )
+
+    def test_timer_submission_keeps_answers_during_network_grace(self):
+        """Die automatische Abgabe behält Antworten bei kurzer Request-Laufzeit nach Fristende."""
+        self.test.time_limit_minutes = 1
+        self.test.save(update_fields=["time_limit_minutes"])
+        access_url = reverse("take_test", args=[self.test.pk])
+        self.client.post(access_url, {"otp": "123456"})
+        self.client.post(access_url, {"examinee_name": "Grace Applicant"})
+        self.client.get(access_url)
+        self.test.refresh_from_db()
+        self.test.started_at = timezone.now() - timedelta(seconds=61, milliseconds=500)
+        self.test.save(update_fields=["started_at"])
+
+        response = self.client.post(access_url, {"question_1": "0", "question_2": "Antwort"})
+        self.assertContains(response, "Alles angekommen.")
+        self.test.refresh_from_db()
+        self.assertEqual(self.test.status, TestSession.Status.COMPLETED)
+        self.assertEqual(self.test.elapsed_seconds, 60)
+        self.assertEqual(Submission.objects.get(test_question__position=1).score, 2)
+        self.assertEqual(Submission.objects.get(test_question__position=2).answer, {"value": "Antwort"})
+
+
+class QuestionCsvTests(TestCase):
+    """Prüft CSV-Export, ergänzenden Import und Poolberechtigungen."""
+
+    def setUp(self):
+        self.user = get_user_model().objects.create_superuser(
+            username="csv-admin", email="csv@example.com", password="strong-password",
+        )
+        self.question_pool = QuestionPool.objects.create(name="CSV-Importtest")
+        self.question = Question.objects.create(
+            question_pool=self.question_pool, text="Welche Antwort stimmt?",
+            question_type=Question.Type.SINGLE, points=Decimal("2.50"),
+            answer_key="Interne Notiz", is_pinned=True,
+            options=[
+                {"text": "Richtig", "is_correct": True},
+                {"text": "Falsch", "is_correct": False},
+            ],
+        )
+        self.client.force_login(self.user)
+
+    def test_export_round_trips_all_question_settings_and_import_appends(self):
+        """CSV enthält Lösungen und Optionen und wird verlustfrei als neue Frage ergänzt."""
+        response = self.client.get(reverse("question_export", args=[self.question_pool.pk]))
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("attachment;", response["Content-Disposition"])
+        imported_file = SimpleUploadedFile(
+            "questions.csv", response.content, content_type="text/csv",
+        )
+        response = self.client.post(
+            reverse("question_import", args=[self.question_pool.pk]),
+            {"file": imported_file},
+        )
+        self.assertRedirects(response, f"{reverse('admin_dashboard')}?pool={self.question_pool.pk}")
+        self.assertEqual(Question.objects.filter(question_pool=self.question_pool).count(), 2)
+        duplicate = Question.objects.filter(question_pool=self.question_pool).exclude(pk=self.question.pk).get()
+        self.assertEqual(duplicate.text, self.question.text)
+        self.assertEqual(duplicate.question_type, self.question.question_type)
+        self.assertEqual(duplicate.points, self.question.points)
+        self.assertEqual(duplicate.answer_key, self.question.answer_key)
+        self.assertEqual(duplicate.is_pinned, self.question.is_pinned)
+        self.assertEqual(duplicate.options, self.question.options)
+
+    def test_invalid_csv_is_atomic_and_export_requires_edit_permission(self):
+        """Fehlerhafte CSV-Zeilen erzeugen keine Teilimporte; Leserecht allein reicht nicht."""
+        text = (
+            "text,question_type,points,answer_key,is_pinned,options_json\n"
+            'Gültige Frage,short,1,,false,[]\n'
+            'Ungültige Frage,single,1,,false,"not-json"\n'
+        )
+        upload = SimpleUploadedFile("questions.csv", text.encode("utf-8"), content_type="text/csv")
+        response = self.client.post(
+            reverse("question_import", args=[self.question_pool.pk]), {"file": upload},
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(Question.objects.filter(question_pool=self.question_pool).count(), 1)
+
+        viewer = get_user_model().objects.create_user(username="csv-viewer", password="strong-password")
+        viewer.user_permissions.add(Permission.objects.get(
+            content_type__app_label="core",
+            codename=pool_permission_codename("view", self.question_pool),
+        ))
+        self.client.force_login(viewer)
+        self.assertEqual(
+            self.client.get(reverse("question_export", args=[self.question_pool.pk])).status_code,
+            403,
+        )
 
 
 class PermissionTests(TestCase):
@@ -200,8 +345,117 @@ class PermissionTests(TestCase):
         response = self.client.get(reverse("submissions"))
         self.assertContains(response, "Visible Cadet")
         self.assertNotContains(response, "Hidden Cadet")
+        self.assertEqual(
+            self.client.get(f"{reverse('submissions')}?pool={view_pool.pk}").context["summaries"][0]["test"],
+            visible_test,
+        )
+        self.assertEqual(
+            self.client.get(f"{reverse('submissions')}?pool={hidden_pool.pk}").status_code,
+            403,
+        )
         self.assertEqual(self.client.get(reverse("submission_detail", args=[hidden_test.pk])).status_code, 403)
         self.assertEqual(self.client.get(reverse("submission_detail", args=[visible_test.pk])).status_code, 200)
+
+    def test_question_bank_filters_question_text_type_and_pinned_state(self):
+        """Such- und Selectfilter grenzen die Fragenliste des gewählten Pools ein."""
+        administrator = get_user_model().objects.create_superuser(
+            username="question-filter-admin", email="question-filter@example.com", password="strong-password",
+        )
+        question_pool = QuestionPool.objects.create(name="Filter-Fragen")
+        Question.objects.create(
+            question_pool=question_pool, text="Kontrollierter Funkruf",
+            question_type=Question.Type.SHORT, is_pinned=True,
+        )
+        Question.objects.create(
+            question_pool=question_pool, text="Andere Auswahl",
+            question_type=Question.Type.SINGLE, options=[
+                {"text": "Ja", "is_correct": True}, {"text": "Nein", "is_correct": False},
+            ],
+        )
+        self.client.force_login(administrator)
+        response = self.client.get(reverse("admin_dashboard"), {
+            "pool": question_pool.pk, "q": "Funk", "type": Question.Type.SHORT, "pinned": "yes",
+        })
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Kontrollierter Funkruf")
+        self.assertNotContains(response, "Andere Auswahl")
+        self.assertNotContains(response, "href=\"/privacy/#datenschutz\"")
+        self.assertContains(response, "Impressum / DSGVO")
+        self.assertEqual(len(response.context["questions"]), 1)
+
+    def test_submission_filters_and_next_test_preserve_pending_workflow(self):
+        """Auswertungsfilter zeigen offene Abgaben und übergeben Kriterien zur Detailnavigation."""
+        user = get_user_model().objects.create_user(username="filter-reviewer")
+        question_pool = QuestionPool.objects.create(name="Filter-Ergebnisse")
+        user.user_permissions.add(Permission.objects.get(
+            content_type__app_label="core",
+            codename=pool_permission_codename("submissions", question_pool),
+        ))
+        tests = []
+        for index, name in enumerate(("Cadet Alpha", "Cadet Beta"), start=1):
+            test = TestSession.objects.create(
+                created_by=user, question_pool=question_pool, otp_hash=make_password(f"11111{index}"),
+                examinee_name=name, status=TestSession.Status.COMPLETED,
+                completed_at=timezone.now() - timedelta(minutes=index),
+            )
+            question = TestQuestion.objects.create(
+                test=test, position=1, text=f"Freitext {index}",
+                question_type=Question.Type.LONG, points=3,
+            )
+            Submission.objects.create(
+                test=test, test_question=question, answer={"value": "Antwort"},
+                needs_manual_grading=True,
+            )
+            tests.append(test)
+        self.client.force_login(user)
+        response = self.client.get(reverse("submissions"), {
+            "pool": question_pool.pk, "q": "Cadet", "pending": "1",
+        })
+        self.assertContains(response, "Cadet Alpha")
+        self.assertContains(response, "Cadet Beta")
+        self.assertEqual(response.context["summaries"][0]["test"], tests[0])
+        detail = self.client.get(
+            reverse("submission_detail", args=[tests[0].pk]),
+            {"q": "Cadet", "pending": "1"},
+        )
+        self.assertEqual(detail.context["next_test_id"], tests[1].pk)
+        self.assertContains(detail, "Nächster")
+
+    def test_audit_log_filters_and_csv_export_are_permission_protected(self):
+        """Audit-Filter werden in den Export übernommen und nur berechtigte Nutzer dürfen exportieren."""
+        reader = get_user_model().objects.create_user(username="audit-export-reader")
+        reader.user_permissions.add(Permission.objects.get(
+            content_type__app_label="core", codename="can_view_audit_logs",
+        ))
+        matching = AuditLog.objects.create(
+            actor=reader, category=AuditLog.Category.STAFF,
+            action="staff.profile.updated", description="Änderung am Profil",
+        )
+        AuditLog.objects.create(
+            actor=reader, category=AuditLog.Category.STAFF,
+            action="staff.profile.updated", description="  =HYPERLINK(\"https://example.com\")",
+        )
+        AuditLog.objects.create(
+            category=AuditLog.Category.TEST, action="test.generated", description="Test erstellt",
+        )
+        self.client.force_login(reader)
+        response = self.client.get(reverse("audit_logs"), {
+            "actor": reader.username, "action": "profil",
+            "category": AuditLog.Category.STAFF,
+        })
+        self.assertEqual(len(response.context["page"].object_list), 2)
+        self.assertIn(matching, response.context["page"].object_list)
+        export = self.client.get(reverse("audit_logs_export"), {
+            "actor": reader.username, "action": "profil",
+            "category": AuditLog.Category.STAFF,
+        })
+        self.assertEqual(export.status_code, 200)
+        self.assertIn("Änderung am Profil", export.content.decode("utf-8-sig"))
+        self.assertIn('\t  =HYPERLINK(""https://example.com"")', export.content.decode("utf-8-sig"))
+        self.assertNotIn("Test erstellt", export.content.decode("utf-8-sig"))
+        unauthorized = get_user_model().objects.create_user(username="audit-export-denied")
+        self.client.force_login(unauthorized)
+        self.assertEqual(self.client.get(reverse("audit_logs_export")).status_code, 403)
 
     def test_custom_group_can_grant_a_dynamic_pool_permission(self):
         """Freie Gruppen verwalten Rechte und deren Mitglieder erhalten exakt diese Poolfreigabe."""
@@ -219,14 +473,15 @@ class PermissionTests(TestCase):
         self.assertContains(rights_home, "Rechtegruppen")
         self.assertNotContains(rights_home, "Reservierte Administratorrolle")
         group_form = self.client.get(reverse("permission_group_create"))
+        self.assertContains(group_form, "Sortierzahl")
         self.assertContains(group_form, f"Pool · {question_pool.name}")
+        self.assertContains(group_form, "Seiteneinstellungen verwalten")
+        self.assertContains(group_form, f"Fragen im Pool importieren und exportieren: {question_pool.name}")
         self.assertContains(group_form, "Tests aus diesem Pool generieren")
         self.assertContains(group_form, "Erlaubt Tests ausschließlich aus diesem Fragenpool zu erstellen.")
         self.assertContains(group_form, "Erfordert Mitarbeiterverwaltung und erlaubt kein Vergeben.")
-        self.assertContains(group_form, "Betrifft gespeicherte Browser-Sitzungen, nicht die Anmeldung oder Academy-Rechte.")
-        self.assertContains(group_form, "Benutzerkonto anlegen")
-        self.assertContains(group_form, "Django-Framework · technische Metadaten")
-        self.assertContains(group_form, "Django-Framework · Anmeldesitzungen")
+        self.assertNotContains(group_form, "Django-Admin")
+        self.assertNotContains(group_form, "django.contrib.sessions")
         section_titles = list(group_form.context["permission_sections"])
         self.assertEqual(section_titles[0]["title"], "Globale Academy-Rechte")
         pool_titles = [section["title"] for section in section_titles if section["title"].startswith("Pool · ")]
@@ -238,23 +493,46 @@ class PermissionTests(TestCase):
             for item in section["fields"]
         ]
         self.assertEqual(len(shown_permission_ids), len(set(shown_permission_ids)))
-        self.assertEqual(set(shown_permission_ids), set(Permission.objects.values_list("pk", flat=True)))
+        self.assertEqual(
+            set(shown_permission_ids),
+            set(Permission.objects.filter(
+                content_type__app_label="core",
+                content_type__model="questionpool",
+            ).exclude(codename__in=["add_questionpool", "change_questionpool", "delete_questionpool", "view_questionpool"])
+            .values_list("pk", flat=True)),
+        )
         self.assertNotContains(group_form, "can_view_pool_")
+        csv_permission = Permission.objects.get(
+            content_type__app_label="core",
+            codename=pool_permission_codename("import_export", question_pool),
+        )
         response = self.client.post(reverse("permission_group_create"), {
-            "name": "Sergeant Prüfer", f"permission_{permission.pk}": "on",
+            "name": "Sergeant Prüfer", "sort_order": "3",
+            f"permission_{permission.pk}": "on", f"permission_{csv_permission.pk}": "on",
         })
         self.assertRedirects(response, reverse("permissions_dashboard"))
         role = Group.objects.get(name="Sergeant Prüfer")
+        self.assertEqual(role.sort_config.sort_order, 3)
         self.assertTrue(role.permissions.filter(pk=permission.pk).exists())
+        self.assertTrue(role.permissions.filter(pk=csv_permission.pk).exists())
         self.assertTrue(AuditLog.objects.filter(
             category=AuditLog.Category.STAFF,
             action="permission_group.created",
             object_id=str(role.pk),
         ).exists())
         response = self.client.post(reverse("permission_group_edit", args=[role.pk]), {
-            "name": role.name, f"permission_{permission.pk}": "on",
+            "name": role.name, "sort_order": "2", f"permission_{permission.pk}": "on",
         })
         self.assertRedirects(response, reverse("permissions_dashboard"))
+        role.sort_config.refresh_from_db()
+        self.assertEqual(role.sort_config.sort_order, 2)
+        response = self.client.post(reverse("permission_group_create"), {
+            "name": "Moderator", "sort_order": "1",
+        })
+        self.assertRedirects(response, reverse("permissions_dashboard"))
+        groups = self.client.get(reverse("permissions_dashboard")).context["groups"]
+        self.assertEqual([group.name for group in groups], ["Moderator", "Sergeant Prüfer"])
+        self.assertEqual(self.client.get("/django-admin/").status_code, 404)
         self.assertTrue(AuditLog.objects.filter(
             category=AuditLog.Category.STAFF,
             action="permission_group.updated",
@@ -269,7 +547,7 @@ class PermissionTests(TestCase):
         )
         user_rights_form = self.client.get(reverse("permission_user_edit", args=[employee.pk]))
         self.assertContains(user_rights_form, f"Pool · {question_pool.name}")
-        self.assertContains(user_rights_form, "Zusätzlich braucht das Konto Adminzugang (is_staff)")
+        self.assertNotContains(user_rights_form, "Django-Admin")
         self.assertContains(user_rights_form, "Erlaubt Tests ausschließlich aus diesem Fragenpool zu erstellen.")
         response = self.client.post(reverse("permission_user_edit", args=[employee.pk]), {
             "username": employee.username, "first_name": "", "last_name": "", "is_active": "on",
@@ -318,7 +596,11 @@ class PermissionTests(TestCase):
             content_type__app_label="core", codename="can_clear_audit_logs",
         ))
         employee.groups.add(protected_role)
-        direct_permission = Permission.objects.get(content_type__app_label="core", codename="change_question")
+        question_pool = QuestionPool.objects.create(name="RBAC-Test-Berechtigungspool")
+        direct_permission = Permission.objects.get(
+            content_type__app_label="core",
+            codename=pool_permission_codename("view", question_pool),
+        )
         protected_permission = Permission.objects.get(
             content_type__app_label="core", codename="can_grant_administrator",
         )
@@ -478,12 +760,65 @@ class PermissionTests(TestCase):
         detail_url = reverse("submission_detail", args=[test.pk])
         response = self.client.get(detail_url)
         self.assertContains(response, "Ergebnisfrage")
-        response = self.client.post(reverse("grade_submission", args=[test.submissions.get().pk]), {"score": "1.25"})
-        self.assertRedirects(response, detail_url)
+        self.assertContains(response, f'name="score_{test.submissions.get().pk}"')
+        self.assertContains(response, 'value="2.00"')
+        response = self.client.post(detail_url, {f"score_{test.submissions.get().pk}": "1.25"})
+        self.assertRedirects(response, f"{detail_url}#score-save-top")
         test.submissions.get().refresh_from_db()
         self.assertEqual(test.submissions.get().score, 1.25)
         self.assertContains(self.client.get(detail_url), "1,25")
         self.assertContains(self.client.get(reverse("submissions")), "1,25 / 2")
+        self.assertContains(self.client.get(detail_url), f'name="score_{test.submissions.get().pk}"')
+        self.assertContains(self.client.get(detail_url), 'value="1.25"')
+
+    def test_bulk_score_save_is_atomic_and_ignores_blank_ungraded_answers(self):
+        """Speichert mehrere Punktänderungen gemeinsam, ohne Teilupdates bei ungültigen Werten."""
+        user = get_user_model().objects.create_user(username="bulk-reviewer")
+        question_pool = QuestionPool.objects.create(name="Gemeinsame Korrektur")
+        user.user_permissions.add(Permission.objects.get(
+            content_type__app_label="core",
+            codename=pool_permission_codename("submissions", question_pool),
+        ))
+        test = TestSession.objects.create(
+            created_by=user, question_pool=question_pool, otp_hash=make_password("131415"),
+            status=TestSession.Status.COMPLETED, completed_at=timezone.now(),
+        )
+        submissions = []
+        for position in range(1, 4):
+            question = TestQuestion.objects.create(
+                test=test, position=position, text=f"Frage {position}",
+                question_type=Question.Type.LONG, points=5,
+            )
+            submissions.append(Submission.objects.create(
+                test=test, test_question=question, answer={"value": "Antwort"},
+                score=Decimal("1.00") if position == 1 else None,
+                needs_manual_grading=position > 1,
+            ))
+        self.client.force_login(user)
+        detail_url = reverse("submission_detail", args=[test.pk])
+        invalid = self.client.post(detail_url, {
+            f"score_{submissions[0].pk}": "3",
+            f"score_{submissions[1].pk}": "8",
+            f"score_{submissions[2].pk}": "",
+        })
+        self.assertEqual(invalid.status_code, 200)
+        submissions[0].refresh_from_db()
+        self.assertEqual(submissions[0].score, Decimal("1.00"))
+        self.assertContains(invalid, "Es wurde nichts gespeichert")
+        saved = self.client.post(detail_url, {
+            f"score_{submissions[0].pk}": "3",
+            f"score_{submissions[1].pk}": "4",
+            f"score_{submissions[2].pk}": "",
+        })
+        self.assertRedirects(saved, f"{detail_url}#score-save-top")
+        submissions[0].refresh_from_db()
+        submissions[1].refresh_from_db()
+        submissions[2].refresh_from_db()
+        self.assertEqual(submissions[0].score, Decimal("3"))
+        self.assertEqual(submissions[1].score, Decimal("4"))
+        self.assertFalse(submissions[1].needs_manual_grading)
+        self.assertIsNone(submissions[2].score)
+        self.assertTrue(submissions[2].needs_manual_grading)
 
     def test_choice_review_shows_options_selection_and_correctness(self):
         """Choice-Korrektur markiert gewählte, falsche und ausgelassene Antworten."""
@@ -571,6 +906,7 @@ class PermissionTests(TestCase):
             "question_pool": str(second_pool.pk), "question_count": "1",
         })
         self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Einladung kopieren")
         self.assertContains(response, "Sergeant-Test Web: 1 Fragen · 0 davon verankert")
         test = TestSession.objects.get(question_pool=second_pool)
         self.assertEqual(list(test.items.values_list("text", flat=True)), ["Nur Sergeant"])
@@ -608,7 +944,11 @@ class PermissionTests(TestCase):
         manager = get_user_model().objects.create_superuser(username="admin-editor", password="test-pass-123")
         staff = get_user_model().objects.create_user(username="academy-member", password="old-password")
         role = Group.objects.create(name="RBAC-Test-Fragenredaktion")
-        direct_permission = Permission.objects.get(content_type__app_label="core", codename="change_question")
+        question_pool = QuestionPool.objects.create(name="RBAC-Profilbearbeitung")
+        direct_permission = Permission.objects.get(
+            content_type__app_label="core",
+            codename=pool_permission_codename("view", question_pool),
+        )
         staff.user_permissions.add(direct_permission)
         self.client.force_login(manager)
         response = self.client.post(reverse("user_edit", args=[staff.pk]), {
@@ -622,6 +962,9 @@ class PermissionTests(TestCase):
         self.assertEqual(list(staff.groups.values_list("name", flat=True)), ["RBAC-Test-Fragenredaktion"])
         self.assertTrue(staff.is_active)
         self.assertTrue(staff.user_permissions.filter(pk=direct_permission.pk).exists())
+        response = self.client.get(reverse("user_edit", args=[staff.pk]))
+        self.assertContains(response, "Effektiv geltende Academy-Rechte")
+        self.assertContains(response, direct_permission.name)
 
     def test_staff_create_saves_new_user_and_roles(self):
         """Neue Benutzer werden gespeichert, bevor ihre M2M-Rechte gelesen werden."""
@@ -691,6 +1034,172 @@ class PermissionTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Systemprotokoll")
         self.assertTrue(AuditLog.objects.filter(category=AuditLog.Category.REQUEST, object_id="audit_logs").exists())
+
+    def test_first_staff_access_requires_current_privacy_policy_confirmation(self):
+        """Mitarbeiter bleiben bis zur Bestätigung der aktuellen Fassung gesperrt."""
+        administrator = get_user_model().objects.create_superuser(username="privacy-admin")
+        configuration = ToolSettings.current()
+        configuration.privacy_policy = "Datenschutzerklärung Fassung eins."
+        configuration.save()
+        self.client.force_login(administrator)
+
+        response = self.client.get(reverse("dashboard"))
+        self.assertRedirects(response, reverse("privacy_accept"))
+        self.assertContains(self.client.get(reverse("privacy_accept")), "Datenschutzerklärung Fassung eins.")
+        response = self.client.post(reverse("privacy_accept"), {"accepted": "on"})
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.url, reverse("dashboard"))
+        self.assertEqual(self.client.get(reverse("tool_settings")).status_code, 200)
+        self.assertTrue(StaffProfile.objects.get(user=administrator).accepted_privacy_hash)
+
+        configuration.privacy_policy = "Datenschutzerklärung Fassung zwei."
+        configuration.save()
+        self.assertRedirects(self.client.get(reverse("dashboard")), reverse("privacy_accept"))
+        self.assertEqual(self.client.get(reverse("privacy_policy")).status_code, 200)
+
+    def test_tool_settings_are_admin_only_and_control_login_and_question_limits(self):
+        """Admins konfigurieren Oberfläche und Testgrenzen; andere Mitarbeiter sind ausgeschlossen."""
+        administrator = get_user_model().objects.create_superuser(username="configuration-admin")
+        self.client.force_login(administrator)
+        response = self.client.post(reverse("tool_settings"), {
+            "site_name": "Academy Prüfungen",
+            "department_name": "San Andreas Training",
+            "minimum_test_questions": "2",
+            "maximum_test_questions": "3",
+            "login_page_heading": "Sicher trainieren",
+            "login_page_text": "Bitte mit Teamkonto anmelden.",
+            "privacy_policy": "",
+            "imprint": "San Andreas Police Department",
+        })
+        self.assertRedirects(response, reverse("tool_settings"))
+        configuration = ToolSettings.objects.get(pk=1)
+        self.assertEqual(configuration.site_name, "Academy Prüfungen")
+        self.assertEqual(configuration.minimum_test_questions, 2)
+        self.client.logout()
+        self.assertContains(self.client.get(reverse("login")), "Sicher trainieren")
+        self.assertContains(self.client.get(reverse("privacy_policy")), "San Andreas Police Department")
+
+        question_pool = QuestionPool.objects.create(name="Fragenlimit")
+        Question.objects.create(
+            question_pool=question_pool, text="Eine Frage",
+            question_type=Question.Type.SHORT,
+        )
+        administrator.user_permissions.add(Permission.objects.get(
+            content_type__app_label="core",
+            codename=pool_permission_codename("generate", question_pool),
+        ))
+        self.client.force_login(administrator)
+        settings_page = self.client.get(reverse("tool_settings"))
+        self.assertContains(settings_page, "VORSCHAU ANMELDESEITE")
+        self.assertContains(settings_page, "data-original-privacy")
+        response = self.client.post(reverse("generate_test"), {
+            "question_pool": str(question_pool.pk), "question_count": "1",
+        })
+        self.assertContains(response, "mindestens 2")
+        response = self.client.post(reverse("tool_settings"), {
+            "site_name": "Ungültig",
+            "department_name": "Department",
+            "minimum_test_questions": "5",
+            "maximum_test_questions": "2",
+            "login_page_heading": "Überschrift",
+            "login_page_text": "Text",
+            "privacy_policy": "",
+            "imprint": "",
+        })
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(ToolSettings.objects.get(pk=1).site_name, "Academy Prüfungen")
+
+        employee = get_user_model().objects.create_user(username="settings-employee")
+        self.client.force_login(employee)
+        self.assertEqual(self.client.get(reverse("tool_settings")).status_code, 403)
+        settings_permission = Permission.objects.get(
+            content_type__app_label="core", codename="can_manage_tool_settings",
+        )
+        employee.user_permissions.add(settings_permission)
+        self.assertEqual(self.client.get(reverse("tool_settings")).status_code, 200)
+        response = self.client.post(reverse("tool_settings"), {
+            "site_name": "Delegierte Einstellungen",
+            "department_name": "Department",
+            "minimum_test_questions": "1",
+            "maximum_test_questions": "20",
+            "login_page_heading": "Heading",
+            "login_page_text": "Login",
+            "privacy_policy": "",
+            "imprint": "",
+        })
+        self.assertRedirects(response, reverse("tool_settings"))
+        self.assertEqual(ToolSettings.objects.get(pk=1).site_name, "Delegierte Einstellungen")
+
+    def test_csv_access_is_independently_grantable_per_question_pool(self):
+        """CSV-Zugriff pro Pool kann getrennt von Fragebearbeitung delegiert werden."""
+        user = get_user_model().objects.create_user(username="csv-delegated")
+        question_pool = QuestionPool.objects.create(name="Separates CSV-Recht")
+        question = Question.objects.create(
+            question_pool=question_pool, text="Kurzfrage",
+            question_type=Question.Type.SHORT, answer_key="Antwort",
+        )
+        user.user_permissions.add(*[
+            Permission.objects.get(
+                content_type__app_label="core",
+                codename=pool_permission_codename(action, question_pool),
+            )
+            for action in ("view", "import_export")
+        ])
+        self.client.force_login(user)
+        dashboard = self.client.get(reverse("admin_dashboard"))
+        self.assertEqual(dashboard.status_code, 200)
+        self.assertContains(dashboard, "CSV exportieren")
+        self.assertContains(dashboard, "CSV importieren")
+        self.assertNotContains(dashboard, reverse("question_create"))
+        self.assertEqual(self.client.get(
+            reverse("question_export", args=[question_pool.pk]),
+        ).status_code, 200)
+        csv_body = (
+            "text,question_type,points,answer_key,is_pinned,options_json\n"
+            "Neue Frage,short,1,Erwartet,false,[]\n"
+        )
+        uploaded = SimpleUploadedFile(
+            "questions.csv", csv_body.encode("utf-8"), content_type="text/csv",
+        )
+        response = self.client.post(
+            reverse("question_import", args=[question_pool.pk]), {"file": uploaded},
+        )
+        self.assertRedirects(response, f"{reverse('admin_dashboard')}?pool={question_pool.pk}")
+        self.assertEqual(Question.objects.filter(question_pool=question_pool).count(), 2)
+        user.user_permissions.remove(Permission.objects.get(
+            content_type__app_label="core",
+            codename=pool_permission_codename("import_export", question_pool),
+        ))
+        self.assertEqual(self.client.get(
+            reverse("question_export", args=[question_pool.pk]),
+        ).status_code, 403)
+
+    def test_site_icon_upload_is_validated_and_served_from_media_storage(self):
+        """Ein gültiges kleines PNG wird gespeichert und als Bild statt Upload-URL ausgeliefert."""
+        administrator = get_user_model().objects.create_superuser(username="icon-admin")
+        self.client.force_login(administrator)
+        image_bytes = b"\x89PNG\r\n\x1a\nacademy-icon"
+        with TemporaryDirectory(dir=settings.BASE_DIR) as media_root:
+            with override_settings(MEDIA_ROOT=media_root):
+                response = self.client.post(reverse("tool_settings"), {
+                    "site_name": "Icon-Test",
+                    "department_name": "Department",
+                    "minimum_test_questions": "1",
+                    "maximum_test_questions": "20",
+                    "login_page_heading": "Heading",
+                    "login_page_text": "Login",
+                    "privacy_policy": "",
+                    "imprint": "",
+                    "site_icon": SimpleUploadedFile(
+                        "academy.png", image_bytes, content_type="image/png",
+                    ),
+                })
+                self.assertRedirects(response, reverse("tool_settings"))
+                icon_response = self.client.get(reverse("site_icon"))
+                self.assertEqual(icon_response.status_code, 200)
+                self.assertEqual(icon_response["Content-Type"], "image/png")
+                self.assertEqual(icon_response["X-Content-Type-Options"], "nosniff")
+                self.assertEqual(b"".join(icon_response.streaming_content), image_bytes)
 
     def test_test_deletion_requires_permission_and_keeps_security_audit(self):
         """Testlöschung ist berechtigt, kaskadiert Antworten und hinterlässt Log."""

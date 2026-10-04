@@ -1,7 +1,10 @@
 """Formulare mit serverseitiger Validierung für Fragen, Benutzer und Prüfungen."""
 from django import forms
+from django.core.files.uploadedfile import UploadedFile
+from django.core.validators import MaxValueValidator, MinValueValidator
 from django.contrib.auth.models import Group, Permission, User
-from .models import Question, QuestionPool
+from django.db.models import Max, Q
+from .models import PermissionGroupSortOrder, Question, QuestionPool, ToolSettings
 from .permissions import (
     ADMINISTRATOR_GROUP,
     DELEGATION_CONTROL_CODES,
@@ -93,49 +96,29 @@ class QuestionForm(forms.ModelForm):
 
 
 def add_permission_checkboxes(form, selected_ids=()):
-    """Ordnet alle Rechte nach Academy-Aufgabe und übersetzt technische CRUD-Namen."""
-    permissions = list(Permission.objects.select_related("content_type").order_by(
-        "content_type__app_label", "content_type__model", "name",
-    ))
+    """Bietet ausschließlich tatsächlich verwendete Academy-Rechte zur Auswahl an."""
+    academy_permissions = Q(
+        content_type__app_label="core",
+        content_type__model="questionpool",
+        codename__in=[code.rsplit(".", 1)[-1] for code in GLOBAL_PERMISSION_CODES.values()],
+    )
+    for prefix in POOL_PERMISSION_PREFIXES.values():
+        academy_permissions |= Q(
+            content_type__app_label="core",
+            content_type__model="questionpool",
+            codename__startswith=prefix,
+        )
+    permissions = list(Permission.objects.filter(academy_permissions).select_related(
+        "content_type",
+    ).order_by("name"))
     pools = {str(pool.pk): pool for pool in QuestionPool.objects.all()}
     global_codes = {code.rsplit(".", 1)[-1]: index for index, code in enumerate(GLOBAL_PERMISSION_CODES.values())}
-    pool_action_order = {prefix: index for index, prefix in enumerate(POOL_PERMISSION_PREFIXES.values())}
-    action_labels = {
-        "add": "anlegen",
-        "change": "bearbeiten",
-        "delete": "löschen",
-        "view": "ansehen",
-    }
-    model_labels = {
-        ("admin", "logentry"): "Admin-Protokolleintrag",
-        ("auth", "group"): "Benutzergruppe",
-        ("auth", "permission"): "Berechtigung",
-        ("auth", "user"): "Benutzerkonto",
-        ("contenttypes", "contenttype"): "Inhaltstyp",
-        ("core", "auditlog"): "Audit-Eintrag",
-        ("core", "question"): "Frage",
-        ("core", "questionpool"): "Fragenpool",
-        ("core", "submission"): "Antwort",
-        ("core", "testquestion"): "Testfrage",
-        ("core", "testsession"): "Testlauf",
-        ("sessions", "session"): "Anmeldesitzung",
-    }
-    model_sections = {
-        ("core", "question"): (2, "Django-Admin · Fragen"),
-        ("core", "questionpool"): (3, "Django-Admin · Fragenpool-Modell"),
-        ("core", "testsession"): (4, "Django-Admin · Tests und Abgaben"),
-        ("core", "testquestion"): (4, "Django-Admin · Tests und Abgaben"),
-        ("core", "submission"): (4, "Django-Admin · Tests und Abgaben"),
-        ("core", "auditlog"): (5, "Django-Admin · Audit-Einträge"),
-        ("auth", "user"): (6, "Django-Admin · Benutzer und Gruppen"),
-        ("auth", "group"): (6, "Django-Admin · Benutzer und Gruppen"),
-        ("auth", "permission"): (6, "Django-Admin · Benutzer und Gruppen"),
-        ("sessions", "session"): (7, "Django-Framework · Anmeldesitzungen"),
-        ("admin", "logentry"): (8, "Django-Admin · Protokolleinträge"),
-        ("contenttypes", "contenttype"): (9, "Django-Framework · technische Metadaten"),
+    pool_action_order = {
+        action: index for index, action in enumerate(POOL_PERMISSION_PREFIXES)
     }
     global_help = {
         "can_manage_users": "Öffnet die Mitarbeiterverwaltung. Rechteänderungen brauchen zusätzlich das passende Recht zum Vergeben oder Entziehen.",
+        "can_manage_tool_settings": "Erlaubt Branding, Logintexte, Testgrenzen und Datenschutztexte in den Tool-Einstellungen zu ändern.",
         "can_delete_tests": "Löscht abgeschlossene Tests. Zusätzlich ist Auswertungszugriff auf den zugehörigen Pool erforderlich.",
         "can_view_audit_logs": "Zeigt Zugriffe und Änderungen im Systemprotokoll an.",
         "can_clear_audit_logs": "Leert alle bisherigen Logeinträge. Der Löschvorgang wird selbst protokolliert; zusätzlich ist Leserecht nötig.",
@@ -147,45 +130,30 @@ def add_permission_checkboxes(form, selected_ids=()):
     pool_help = {
         "view": "Erlaubt, Fragen dieses Pools in der Academy-Fragenbank anzusehen.",
         "edit": "Erlaubt Fragen dieses Pools anzulegen, zu bearbeiten und zu löschen. Zusätzlich ist das Ansichtsrecht nötig.",
+        "import_export": "Erlaubt den CSV-Import und -Export dieses Pools. Der Export enthält interne Lösungsschlüssel.",
         "generate": "Erlaubt Tests ausschließlich aus diesem Fragenpool zu erstellen.",
         "submissions": "Erlaubt Abgaben dieses Pools anzusehen und zu bewerten.",
     }
-    action_help = {
-        "add": "Erlaubt das Anlegen dieses Modelltyps im technischen Django-Admin. Zusätzlich braucht das Konto Adminzugang (is_staff) und das Modell muss dort registriert sein.",
-        "change": "Erlaubt das Bearbeiten dieses Modelltyps im technischen Django-Admin. Zusätzlich braucht das Konto Adminzugang (is_staff) und das Modell muss dort registriert sein.",
-        "delete": "Erlaubt das Löschen dieses Modelltyps im technischen Django-Admin. Zusätzlich braucht das Konto Adminzugang (is_staff) und das Modell muss dort registriert sein.",
-        "view": "Erlaubt das Ansehen dieses Modelltyps im technischen Django-Admin. Zusätzlich braucht das Konto Adminzugang (is_staff) und das Modell muss dort registriert sein.",
-    }
     sections = {}
     for permission in permissions:
-        content_type = permission.content_type
-        model_key = (content_type.app_label, content_type.model)
         pool_id = None
-        if model_key == ("core", "questionpool"):
-            for prefix in POOL_PERMISSION_PREFIXES.values():
-                if permission.codename.startswith(prefix):
-                    pool_id = permission.codename[len(prefix):]
-                    break
+        for prefix in POOL_PERMISSION_PREFIXES.values():
+            if permission.codename.startswith(prefix):
+                pool_id = permission.codename[len(prefix):]
+                break
+        if pool_id and pool_id not in pools:
+            continue
         if pool_id and pool_id in pools:
             section_key = (1, pools[pool_id].name.casefold())
             section_title = f"Pool · {pools[pool_id].name}"
             field_order = next(
-                index for prefix, index in pool_action_order.items()
+                pool_action_order[action] for action, prefix in POOL_PERMISSION_PREFIXES.items()
                 if permission.codename.startswith(prefix)
             )
-        elif model_key == ("core", "questionpool") and permission.codename in global_codes:
+        else:
             section_key = (0, "")
             section_title = "Globale Academy-Rechte"
             field_order = global_codes[permission.codename]
-        else:
-            section_order, section_title = model_sections.get(model_key, (10, "Weitere Systemrechte"))
-            section_key = (section_order, section_title.casefold())
-            action = permission.codename.split("_", 1)[0]
-            field_order = {"view": 0, "add": 1, "change": 2, "delete": 3}.get(action, 4)
-        action = permission.codename.split("_", 1)[0]
-        permission_label = permission.name
-        if action in action_labels and model_key in model_labels and permission.codename not in global_codes:
-            permission_label = f"{model_labels[model_key]} {action_labels[action]}"
         if pool_id and pool_id in pools:
             pool_action = next(
                 action_name for action_name, prefix in POOL_PERMISSION_PREFIXES.items()
@@ -194,21 +162,11 @@ def add_permission_checkboxes(form, selected_ids=()):
             permission_help = pool_help[pool_action]
         elif permission.codename in global_help:
             permission_help = global_help[permission.codename]
-        elif content_type.app_label == "sessions":
-            permission_help = "Betrifft gespeicherte Browser-Sitzungen, nicht die Anmeldung oder Academy-Rechte. Eine Sitzungsverwaltung gibt es in dieser Anwendung nicht."
-        elif content_type.app_label == "contenttypes":
-            permission_help = "Technisches Django-Framework-Recht für Modellmetadaten; es schaltet keine Academy-Funktion frei."
-        elif content_type.app_label == "admin":
-            permission_help = "Betrifft Einträge des technischen Django-Admin-Protokolls, nicht das Academy-Systemprotokoll."
-        elif model_key == ("core", "auditlog") and action in {"add", "change", "delete"}:
-            permission_help = "Wird von der schreibgeschützten Audit-Ansicht nicht gewährt; das Protokoll kann nur über das gesonderte Clear-Recht geleert werden."
-        elif action in action_help and model_key in model_labels:
-            permission_help = f"{action_help[action]} Es ersetzt keine Academy- oder Poolberechtigung."
         else:
-            permission_help = "Technisches Django-Recht; es wirkt nur in Komponenten, die diese Permission ausdrücklich prüfen."
+            permission_help = global_help[permission.codename]
         field_name = f"permission_{permission.pk}"
         form.fields[field_name] = forms.BooleanField(
-            label=permission_label, required=False, initial=permission.pk in selected_ids,
+            label=permission.name, required=False, initial=permission.pk in selected_ids,
         )
         sections.setdefault(section_key, {
             "title": section_title,
@@ -217,7 +175,7 @@ def add_permission_checkboxes(form, selected_ids=()):
         })["fields"].append({
             "name": field_name,
             "permission": permission,
-            "permission_label": permission_label,
+            "permission_label": permission.name,
             "permission_help": permission_help,
             "sort_order": field_order,
             "bound_field": form[field_name],
@@ -244,7 +202,7 @@ class StaffUserForm(forms.ModelForm):
     password = forms.CharField(label="Neues Passwort", required=False, widget=forms.PasswordInput, help_text="Bei Bearbeitung leer lassen, damit es unverändert bleibt.")
     is_administrator = forms.BooleanField(
         label="Administrator (alle Rechte)", required=False,
-        help_text="Administratoren erhalten automatisch sämtliche Anwendungs- und Django-Rechte.",
+        help_text="Administratoren erhalten automatisch sämtliche Rechte der Academy-Anwendung.",
     )
     groups = forms.ModelMultipleChoiceField(label="Rechtegruppen", queryset=Group.objects.exclude(name=ADMINISTRATOR_GROUP), required=False, widget=forms.CheckboxSelectMultiple)
     class Meta:
@@ -364,18 +322,34 @@ class StaffUserForm(forms.ModelForm):
 
 
 class PermissionGroupForm(forms.ModelForm):
-    """Erstellt freie Gruppen mit beliebigen globalen und poolbezogenen Rechten."""
+    """Erstellt Rechtegruppen mit Academy-Rechten und manueller Sortierzahl."""
+    sort_order = forms.IntegerField(
+        label="Sortierzahl", min_value=1,
+        widget=forms.NumberInput(attrs={"min": 1, "step": 1}),
+    )
+
     class Meta:
-        """Speichert im Gruppenmodell nur den frei wählbaren Gruppennamen."""
+        """Speichert den frei wählbaren Gruppennamen."""
         model = Group
         fields = ("name",)
 
     def __init__(self, *args, **kwargs):
-        """Markiert bestehende Gruppenrechte und gruppiert sie nach Fragepool."""
+        """Markiert bestehende Rechte und lädt eine passende Sortierzahl."""
         super().__init__(*args, **kwargs)
+        if self.instance.pk:
+            current_order = PermissionGroupSortOrder.objects.filter(
+                group_id=self.instance.pk,
+            ).values_list("sort_order", flat=True).first()
+        else:
+            current_order = None
+        if current_order is None:
+            current_order = (PermissionGroupSortOrder.objects.aggregate(
+                maximum=Max("sort_order"),
+            )["maximum"] or 0) + 1
+        self.fields["sort_order"].initial = current_order
         selected_ids = set(self.instance.permissions.values_list("pk", flat=True)) if self.instance.pk else set()
         add_permission_checkboxes(self, selected_ids)
-        self.order_fields(["name", *self.permission_ids.values()])
+        self.order_fields(["name", "sort_order", *self.permission_ids.values()])
 
     def clean_name(self):
         """Reserviert den Namen Administrator für die uneingeschränkte Sonderrolle."""
@@ -389,7 +363,68 @@ class PermissionGroupForm(forms.ModelForm):
         group = super().save(commit=commit)
         if commit:
             group.permissions.set(Permission.objects.filter(pk__in=selected_permission_ids(self)))
+            PermissionGroupSortOrder.objects.update_or_create(
+                group=group,
+                defaults={"sort_order": self.cleaned_data["sort_order"]},
+            )
         return group
+
+
+class ToolSettingsForm(forms.ModelForm):
+    """Validiert globale Darstellungseinstellungen und die Test-Fragenlimits."""
+    class Meta:
+        model = ToolSettings
+        fields = (
+            "site_name", "department_name", "site_icon",
+            "minimum_test_questions", "maximum_test_questions",
+            "login_page_heading", "login_page_text", "privacy_policy", "imprint",
+        )
+        widgets = {
+            "login_page_heading": forms.Textarea(attrs={"rows": 3}),
+            "login_page_text": forms.Textarea(attrs={"rows": 4}),
+            "privacy_policy": forms.Textarea(attrs={"rows": 12}),
+            "imprint": forms.Textarea(attrs={"rows": 8}),
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["privacy_policy"].widget.attrs["data-original-privacy"] = (
+            self.instance.privacy_policy if self.instance.pk else ""
+        )
+        self.fields["site_name"].widget.attrs["data-settings-site-name"] = ""
+        self.fields["department_name"].widget.attrs["data-settings-department"] = ""
+        self.fields["login_page_heading"].widget.attrs["data-settings-heading"] = ""
+        self.fields["login_page_text"].widget.attrs["data-settings-login-text"] = ""
+        for field_name in ("minimum_test_questions", "maximum_test_questions"):
+            self.fields[field_name].min_value = 1
+            self.fields[field_name].validators.append(
+                MinValueValidator(1, message="Die Fragenzahl muss mindestens 1 betragen."),
+            )
+            self.fields[field_name].widget.attrs["min"] = 1
+
+    def clean(self):
+        cleaned = super().clean()
+        minimum = cleaned.get("minimum_test_questions")
+        maximum = cleaned.get("maximum_test_questions")
+        if minimum is not None and maximum is not None and minimum > maximum:
+            self.add_error("maximum_test_questions", "Die maximale Fragenzahl muss mindestens der minimalen Fragenzahl entsprechen.")
+        return cleaned
+
+    def clean_site_icon(self):
+        icon = self.cleaned_data.get("site_icon")
+        if isinstance(icon, UploadedFile):
+            if icon.size > 1024 * 1024:
+                raise forms.ValidationError("Das Site-Icon darf höchstens 1 MB groß sein.")
+            signature = icon.read(8)
+            icon.seek(0)
+            valid_signature = (
+                icon.name.lower().endswith(".png") and signature == b"\x89PNG\r\n\x1a\n"
+            ) or (
+                icon.name.lower().endswith(".ico") and signature[:4] == b"\x00\x00\x01\x00"
+            )
+            if not valid_signature:
+                raise forms.ValidationError("Die Datei ist kein gültiges PNG- oder ICO-Site-Icon.")
+        return icon
 
 
 class GenerateTestForm(forms.Form):
@@ -399,14 +434,50 @@ class GenerateTestForm(forms.Form):
         empty_label="Prüfungstyp auswählen",
     )
     question_count = forms.IntegerField(label="Fragen im Test", min_value=1, widget=forms.NumberInput(attrs={"min": 1}))
+    time_limit_minutes = forms.IntegerField(
+        label="Maximale Testdauer in Minuten", min_value=1, max_value=1440,
+        required=False, widget=forms.NumberInput(attrs={"min": 1, "max": 1440, "placeholder": "Kein Zeitlimit"}),
+        help_text="Optional. Ohne Angabe läuft der Test ohne Zeitlimit.",
+    )
 
     def __init__(self, *args, **kwargs):
         """Bietet nur autorisierte Pools an und wählt den ersten davon vor."""
         question_pools = kwargs.pop("question_pools", None)
+        minimum = kwargs.pop("minimum_questions", 1)
+        maximum = kwargs.pop("maximum_questions", 100)
         super().__init__(*args, **kwargs)
         self.fields["question_pool"].queryset = question_pools if question_pools is not None else QuestionPool.objects.none()
         if not self.is_bound:
             self.fields["question_pool"].initial = self.fields["question_pool"].queryset.first()
+        question_count = self.fields["question_count"]
+        question_count.min_value = minimum
+        question_count.max_value = maximum
+        question_count.validators.extend([
+            MinValueValidator(minimum, message=f"Die Fragenzahl muss mindestens {minimum} betragen."),
+            MaxValueValidator(maximum, message=f"Die Fragenzahl darf höchstens {maximum} betragen."),
+        ])
+        question_count.widget.attrs.update({"min": minimum, "max": maximum})
+
+
+class QuestionCsvImportForm(forms.Form):
+    """Nimmt einen CSV-Export der Fragenbank zur ergänzenden Übernahme entgegen."""
+    file = forms.FileField(label="CSV-Datei", widget=forms.ClearableFileInput(attrs={"accept": ".csv,text/csv"}))
+
+    def clean_file(self):
+        uploaded_file = self.cleaned_data["file"]
+        if not uploaded_file.name.lower().endswith(".csv"):
+            raise forms.ValidationError("Bitte eine CSV-Datei auswählen.")
+        if uploaded_file.size > 5 * 1024 * 1024:
+            raise forms.ValidationError("Die CSV-Datei darf höchstens 5 MB groß sein.")
+        return uploaded_file
+
+
+class PrivacyAcceptanceForm(forms.Form):
+    """Erfordert die ausdrückliche Bestätigung der aktuellen Datenschutzerklärung."""
+    accepted = forms.BooleanField(
+        label="Ich habe die Datenschutzerklärung gelesen und bestätige sie.",
+        required=True,
+    )
 
 
 class QuestionPoolForm(forms.ModelForm):

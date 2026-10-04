@@ -1,21 +1,43 @@
 """HTTP-Endpunkte für RBAC-Verwaltung, Testausgabe und Korrektur."""
+import csv
+from datetime import timedelta
 from decimal import Decimal, InvalidOperation
+import hashlib
+import io
+import json
+import math
+from mimetypes import guess_type
 from django.contrib import messages
 from django.contrib.auth import authenticate, login, logout
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.hashers import check_password
-from django.contrib.auth.models import Group, User
+from django.contrib.auth.models import Group, Permission, User
 from django.db import transaction
-from django.db.models import Count, Q, Sum
+from django.db.models import Count, Q, Sum, Value
+from django.db.models import CharField
+from django.db.models.functions import Cast, Coalesce
 from django.core.paginator import Paginator
+from django.http import FileResponse, Http404, HttpResponse, HttpResponseBadRequest
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
+from django.utils.dateparse import parse_date
 from django.views.decorators.debug import sensitive_post_parameters
 from django.views.decorators.http import require_http_methods, require_POST
-from .forms import ExamineeNameForm, GenerateTestForm, OtpForm, PermissionGroupForm, QuestionForm, QuestionPoolForm, StaffUserForm
+from .forms import (
+    ExamineeNameForm,
+    GenerateTestForm,
+    OtpForm,
+    PermissionGroupForm,
+    PrivacyAcceptanceForm,
+    QuestionCsvImportForm,
+    QuestionForm,
+    QuestionPoolForm,
+    StaffUserForm,
+    ToolSettingsForm,
+)
 from .audit import record_event
-from .models import AuditLog, Question, QuestionPool, Submission, TestSession
+from .models import AuditLog, Question, QuestionPool, StaffProfile, Submission, TestSession, ToolSettings
 from .permissions import (
     ADMINISTRATOR_GROUP,
     accessible_pools,
@@ -52,6 +74,105 @@ def require_administrator(view_func):
     return wrapped
 
 
+def _effective_academy_permissions(user):
+    """Returns readable names of the Academy permissions inherited by a user."""
+    codenames = {
+        permission.split(".", 1)[1]
+        for permission in user.get_all_permissions()
+        if permission.startswith("core.")
+    }
+    return list(Permission.objects.filter(
+        content_type__app_label="core", codename__in=codenames,
+    ).order_by("name").values_list("name", flat=True))
+
+
+def _query_without_page(query_params):
+    """Returns the current filter query without its pagination cursor."""
+    query_params = query_params.copy()
+    query_params.pop("page", None)
+    return query_params.urlencode()
+
+
+def _parse_filter_date(value):
+    """Parses a browser date filter without raising on malformed query strings."""
+    if not value:
+        return None
+    try:
+        return parse_date(value)
+    except ValueError:
+        return None
+
+
+def privacy_policy(request):
+    """Zeigt Datenschutzerklärung und Impressum auch ohne Mitarbeiteranmeldung an."""
+    return render(request, "core/privacy_policy.html", {"tool_settings": ToolSettings.current()})
+
+
+def site_icon(request):
+    """Liefert das konfigurierte, auf Bildformate begrenzte Favicon aus dem Media-Storage."""
+    _ = request
+    configuration = ToolSettings.objects.filter(pk=1).first()
+    if not configuration or not configuration.site_icon:
+        raise Http404("Kein Site-Icon konfiguriert.")
+    content_type = guess_type(configuration.site_icon.name)[0] or "application/octet-stream"
+    return FileResponse(
+        configuration.site_icon.open("rb"),
+        content_type=content_type,
+        headers={"X-Content-Type-Options": "nosniff"},
+    )
+
+
+@login_required
+@require_http_methods(["GET", "POST"])
+def privacy_accept(request):
+    """Speichert die ausdrückliche Bestätigung der aktuell hinterlegten Erklärung."""
+    tool_settings = ToolSettings.current()
+    policy = tool_settings.privacy_policy.strip()
+    form = PrivacyAcceptanceForm(request.POST or None)
+    if request.method == "POST" and policy and form.is_valid():
+        policy_hash = hashlib.sha256(policy.encode("utf-8")).hexdigest()
+        StaffProfile.objects.update_or_create(
+            user=request.user,
+            defaults={
+                "accepted_privacy_hash": policy_hash,
+                "privacy_accepted_at": timezone.now(),
+            },
+        )
+        record_event(
+            request, AuditLog.Category.STAFF, "privacy_policy.accepted",
+            "Mitarbeiter hat die aktuelle Datenschutzerklärung bestätigt.",
+            "user", request.user.pk,
+            {"policy_hash": policy_hash},
+        )
+        messages.success(request, "Datenschutzerklärung bestätigt.")
+        return redirect("dashboard")
+    return render(request, "core/privacy_accept.html", {
+        "tool_settings": tool_settings,
+        "form": form,
+        "policy_configured": bool(policy),
+    })
+
+
+@require_capability("can_manage_tool_settings")
+@require_http_methods(["GET", "POST"])
+def tool_settings(request):
+    """Bearbeitet zentrale Branding-, Prüfungs- und Rechtstext-Einstellungen."""
+    configuration = ToolSettings.current()
+    form = ToolSettingsForm(request.POST or None, request.FILES or None, instance=configuration)
+    if form.is_valid():
+        changed_fields = list(form.changed_data)
+        form.save()
+        record_event(
+            request, AuditLog.Category.STAFF, "tool_settings.updated",
+            "Zentrale Einstellungen des Testgenerators aktualisiert.",
+            "tool_settings", configuration.pk,
+            {"changed_fields": changed_fields},
+        )
+        messages.success(request, "Einstellungen wurden gespeichert.")
+        return redirect("tool_settings")
+    return render(request, "core/tool_settings.html", {"form": form})
+
+
 def dashboard(request):
     """Leitet angemeldete Mitarbeiter zum passenden Arbeitsbereich."""
     if request.user.is_authenticated:
@@ -75,11 +196,12 @@ def dashboard(request):
 
 @require_administrator
 def permissions_dashboard(request):
-    """Zeigt benutzerdefinierte Gruppen mit Rechten und Mitgliederzahlen."""
+    """Zeigt Academy-Rechtegruppen nach ihrer Sortierzahl."""
     groups = Group.objects.exclude(name=ADMINISTRATOR_GROUP).prefetch_related("permissions").annotate(
         permission_count=Count("permissions", distinct=True),
         member_count=Count("user", distinct=True),
-    ).order_by("name")
+        display_order=Coalesce("sort_config__sort_order", Value(0)),
+    ).order_by("display_order", "name")
     return render(request, "core/permissions.html", {
         "groups": groups,
     })
@@ -149,7 +271,11 @@ def permission_user_edit(request, pk):
         })
         messages.success(request, "Zugriffsrechte wurden gespeichert.")
         return redirect("users_dashboard")
-    return render(request, "core/user_form.html", {"form": form, "title": f"Zugriffe: {user.username}"})
+    effective_permission_names = _effective_academy_permissions(user)
+    return render(request, "core/user_form.html", {
+        "form": form, "title": f"Zugriffe: {user.username}",
+        "effective_permission_names": effective_permission_names,
+    })
 
 
 @require_http_methods(["GET", "POST"])
@@ -193,13 +319,181 @@ def admin_dashboard(request):
     if selected_pool is None:
         return render(request, "core/403.html", {"capability": "can_view_pool"}, status=403)
     questions = Question.objects.filter(question_pool=selected_pool) if selected_pool else Question.objects.none()
+    search_query = request.GET.get("q", "").strip()[:120]
+    question_type = request.GET.get("type", "")
+    pinned_filter = request.GET.get("pinned", "")
+    if search_query:
+        questions = questions.filter(text__icontains=search_query)
+    if question_type in Question.Type.values:
+        questions = questions.filter(question_type=question_type)
+    if pinned_filter in {"yes", "no"}:
+        questions = questions.filter(is_pinned=(pinned_filter == "yes"))
+    questions = questions.order_by("-is_pinned", "-updated_at")
+    question_count = questions.count()
+    pinned_count = questions.filter(is_pinned=True).count()
+    question_page = Paginator(questions, 50).get_page(request.GET.get("page"))
+    query_params = request.GET.copy()
+    query_params.pop("page", None)
     return render(request, "core/admin_dashboard.html", {
-        "questions": questions,
+        "questions": question_page.object_list,
+        "question_page": question_page,
+        "question_count": question_count,
+        "question_pagination_query": query_params.urlencode(),
         "pools": pools,
         "selected_pool": selected_pool,
-        "pinned_count": questions.filter(is_pinned=True).count(),
+        "pinned_count": pinned_count,
+        "question_search": search_query,
+        "selected_question_type": question_type,
+        "selected_pinned_filter": pinned_filter,
+        "question_types": Question.Type.choices,
         "can_edit_selected_pool": has_pool_access(request.user, selected_pool, "edit"),
+        "can_import_export_selected_pool": has_pool_access(request.user, selected_pool, "import_export"),
+        "csv_import_form": QuestionCsvImportForm(),
     })
+
+
+QUESTION_CSV_FIELDS = (
+    "text", "question_type", "points", "answer_key", "is_pinned", "options_json",
+)
+
+
+@login_required
+def question_export(request, pool_id):
+    """Exportiert Fragen samt internen Antwortschlüsseln nur für Pool-Editoren."""
+    question_pool = get_object_or_404(QuestionPool, pk=pool_id)
+    if not has_pool_access(request.user, question_pool, "view") or not has_pool_access(
+        request.user, question_pool, "import_export",
+    ):
+        return render(request, "core/403.html", {"capability": "can_import_export_pool"}, status=403)
+    response = HttpResponse(content_type="text/csv; charset=utf-8")
+    response["Content-Disposition"] = f'attachment; filename="questions-pool-{question_pool.pk}.csv"'
+    response.write("\ufeff")
+    writer = csv.writer(response)
+    writer.writerow(QUESTION_CSV_FIELDS)
+    for question in Question.objects.filter(question_pool=question_pool).order_by("pk"):
+        writer.writerow((
+            question.text,
+            question.question_type,
+            question.points,
+            question.answer_key,
+            "true" if question.is_pinned else "false",
+            json.dumps(question.options, ensure_ascii=False, separators=(",", ":")),
+        ))
+    return response
+
+
+@login_required
+@require_POST
+def question_import(request, pool_id):
+    """Importiert validierte Fragen ergänzend; vorhandene Fragen werden nie überschrieben."""
+    question_pool = get_object_or_404(QuestionPool, pk=pool_id)
+    if not has_pool_access(request.user, question_pool, "view") or not has_pool_access(
+        request.user, question_pool, "import_export",
+    ):
+        return render(request, "core/403.html", {"capability": "can_import_export_pool"}, status=403)
+    form = QuestionCsvImportForm(request.POST, request.FILES)
+    errors = []
+    imported_questions = []
+    if form.is_valid():
+        try:
+            contents = form.cleaned_data["file"].read().decode("utf-8-sig")
+            reader = csv.DictReader(io.StringIO(contents, newline=""))
+            headers = reader.fieldnames or []
+            if len(headers) != len(set(headers)) or set(headers) != set(QUESTION_CSV_FIELDS):
+                errors.append("Die CSV-Kopfzeile muss genau diese Spalten enthalten: " + ", ".join(QUESTION_CSV_FIELDS))
+            else:
+                for row_number, row in enumerate(reader, start=2):
+                    if row_number > 5001:
+                        errors.append("Eine CSV-Datei darf höchstens 5.000 Fragen enthalten.")
+                        break
+                    if None in row:
+                        errors.append(f"Zeile {row_number}: Die Zeile enthält mehr Spalten als die Kopfzeile.")
+                        continue
+                    if all(not (value or "").strip() for value in row.values()):
+                        continue
+                    try:
+                        options = json.loads(row["options_json"])
+                    except (json.JSONDecodeError, TypeError) as error:
+                        errors.append(f"Zeile {row_number}: options_json ist kein gültiges JSON ({error}).")
+                        continue
+                    if not isinstance(options, list) or any(
+                        not isinstance(option, dict)
+                        or not isinstance(option.get("text"), str)
+                        or not option["text"].strip()
+                        or not isinstance(option.get("is_correct"), bool)
+                        for option in options
+                    ):
+                        errors.append(f"Zeile {row_number}: options_json muss eine Liste aus Text- und Korrekt-Markierungen sein.")
+                        continue
+                    pinned_value = (row.get("is_pinned") or "").strip().casefold()
+                    if pinned_value not in {"true", "false"}:
+                        errors.append(f"Zeile {row_number}: is_pinned muss true oder false sein.")
+                        continue
+                    data = {
+                        "question_pool": str(question_pool.pk),
+                        "text": row.get("text", ""),
+                        "question_type": row.get("question_type", ""),
+                        "points": row.get("points", ""),
+                        "answer_key": row.get("answer_key", ""),
+                        "is_pinned": "on" if pinned_value == "true" else "",
+                        "option_count": str(max(len(options), 2)),
+                    }
+                    for index in range(max(len(options), 2)):
+                        option = options[index] if index < len(options) else {}
+                        data[f"option_text_{index}"] = option.get("text", "")
+                        if option.get("is_correct"):
+                            data[f"option_correct_{index}"] = "on"
+                    question_form = QuestionForm(data)
+                    question_form.fields["question_pool"].queryset = QuestionPool.objects.filter(pk=question_pool.pk)
+                    if not question_form.is_valid():
+                        details = "; ".join(
+                            f"{field}: {', '.join(messages)}"
+                            for field, messages in question_form.errors.items()
+                        )
+                        errors.append(f"Zeile {row_number}: {details}")
+                        continue
+                    if question_form.cleaned_data["question_type"] not in (
+                        Question.Type.SINGLE, Question.Type.MULTIPLE,
+                    ) and options:
+                        errors.append(f"Zeile {row_number}: Nur Auswahlfragen dürfen Antwortoptionen enthalten.")
+                        continue
+                    imported_questions.append(question_form.save(commit=False))
+        except UnicodeDecodeError:
+            errors.append("Die CSV-Datei muss UTF-8-kodiert sein.")
+        except csv.Error as error:
+            errors.append(f"CSV-Lesefehler: {error}")
+        if not errors and not imported_questions:
+            errors.append("Die CSV-Datei enthält keine importierbaren Fragen.")
+    if not form.is_valid():
+        errors.extend(form.errors.get("file", []))
+    if errors:
+        messages.error(request, "Der Import wurde nicht gespeichert. Bitte korrigiere die gemeldeten Fehler.")
+        pools = accessible_pools(request.user, "view")
+        questions = Question.objects.filter(question_pool=question_pool)
+        return render(request, "core/admin_dashboard.html", {
+            "questions": questions,
+            "pools": pools,
+            "selected_pool": question_pool,
+            "pinned_count": questions.filter(is_pinned=True).count(),
+            "question_count": questions.count(),
+            "question_types": Question.Type.choices,
+            "question_search": "",
+            "selected_question_type": "",
+            "selected_pinned_filter": "",
+            "can_edit_selected_pool": has_pool_access(request.user, question_pool, "edit"),
+            "can_import_export_selected_pool": True,
+            "csv_import_form": form,
+            "csv_import_errors": errors,
+        }, status=400)
+    with transaction.atomic():
+        Question.objects.bulk_create(imported_questions)
+        record_event(
+            request, AuditLog.Category.QUESTION, "question.csv.imported",
+            "Fragen aus einer CSV-Datei in einen Fragenpool importiert.",
+            "question_pool", question_pool.pk, {"count": len(imported_questions)},
+        )
+    messages.success(request, f"{len(imported_questions)} Fragen wurden ergänzt.")
+    return redirect(f"{reverse('admin_dashboard')}?pool={question_pool.pk}")
 
 
 @require_administrator
@@ -346,7 +640,13 @@ def generate_test_view(request):
     requested_pool_id = request.POST.get("question_pool") if request.method == "POST" else None
     if requested_pool_id and not generatable_pools.filter(pk=requested_pool_id).exists():
         return render(request, "core/403.html", {"capability": "can_generate_test_from_pool"}, status=403)
-    form = GenerateTestForm(request.POST or None, question_pools=generatable_pools)
+    configuration = ToolSettings.current()
+    form = GenerateTestForm(
+        request.POST or None,
+        question_pools=generatable_pools,
+        minimum_questions=configuration.minimum_test_questions,
+        maximum_questions=configuration.maximum_test_questions,
+    )
     result = None
     form_is_valid = form.is_valid()
     if form_is_valid:
@@ -357,10 +657,16 @@ def generate_test_view(request):
         except TestGenerationError as error:
             form.add_error("question_count", str(error))
         else:
+            test.time_limit_minutes = form.cleaned_data["time_limit_minutes"]
+            test.save(update_fields=["time_limit_minutes"])
             result = {"test": test, "otp": otp, "url": request.build_absolute_uri(f"/test/{test.pk}/")}
             record_event(
                 request, AuditLog.Category.TEST, "test.generated", "Neuer Testlauf erstellt.",
-                "test", test.pk, {"question_count": test.items.count(), "question_pool": test.question_pool.name},
+                "test", test.pk, {
+                    "question_count": test.items.count(),
+                    "question_pool": test.question_pool.name,
+                    "time_limit_minutes": test.time_limit_minutes,
+                },
             )
     selected_pool = form.cleaned_data.get("question_pool") if form.is_bound else form.fields["question_pool"].initial
     if not hasattr(selected_pool, "pk"):
@@ -375,6 +681,8 @@ def generate_test_view(request):
         "pool_choices": pool_choices,
         "available_count": selected_counts.question_count if selected_counts else 0,
         "pinned_count": selected_counts.pinned_count if selected_counts else 0,
+        "minimum_test_questions": configuration.minimum_test_questions,
+        "maximum_test_questions": configuration.maximum_test_questions,
     })
 
 
@@ -385,6 +693,67 @@ def _public_questions(test):
         "question_type": item.question_type,
         "options": [{"index": index, "text": option["text"]} for index, option in enumerate(item.options)],
     } for item in test.items.all()]
+
+
+def _finish_test(request, test, items, submitted_values, examinee_name, timed_out):
+    """Speichert Antworten und verbraucht den Prüfungszugang atomar."""
+    now = timezone.now()
+    deadline = (
+        test.started_at + timedelta(minutes=test.time_limit_minutes)
+        if test.started_at and test.time_limit_minutes is not None else None
+    )
+    accept_timer_submission = (
+        timed_out and request.method == "POST" and deadline is not None
+        and now <= deadline + timedelta(seconds=3)
+    )
+    answers = []
+    for item in items:
+        if timed_out and not accept_timer_submission:
+            value = [] if item.question_type == Question.Type.MULTIPLE else ""
+        else:
+            values = submitted_values.getlist(f"question_{item.pk}")
+            value = values if item.question_type == Question.Type.MULTIPLE else (values[0] if values else "")
+            if item.question_type in (Question.Type.SINGLE, Question.Type.MULTIPLE):
+                allowed = {str(index) for index in range(len(item.options))}
+                if any(choice not in allowed for choice in (value if isinstance(value, list) else [value]) if choice):
+                    messages.error(request, "Ungültige Antwortoption. Bitte erneut versuchen.")
+                    return False
+        if timed_out and not accept_timer_submission:
+            score, manual = Decimal("0"), False
+        else:
+            score, manual = grade_answer(item, {"value": value})
+        answers.append(Submission(
+            test=test, test_question=item, answer={"value": value},
+            score=score, needs_manual_grading=manual,
+        ))
+    elapsed_seconds = max(0, int((now - test.started_at).total_seconds())) if test.started_at else None
+    if test.time_limit_minutes is not None and elapsed_seconds is not None:
+        elapsed_seconds = min(elapsed_seconds, test.time_limit_minutes * 60)
+    with transaction.atomic():
+        updated = TestSession.objects.filter(
+            pk=test.pk, status=TestSession.Status.ISSUED,
+        ).update(
+            status=TestSession.Status.COMPLETED,
+            completed_at=now,
+            examinee_name=examinee_name,
+            elapsed_seconds=elapsed_seconds,
+        )
+        if updated != 1:
+            return False
+        Submission.objects.bulk_create(answers)
+    action = "submission.timed_out" if timed_out else "submission.completed"
+    description = "Zeitlimit abgelaufen; Test automatisch abgegeben." if timed_out else "Prüfling hat den Test abgegeben."
+    record_event(
+        request, AuditLog.Category.SUBMISSION, action, description, "test", test.pk,
+        {
+            "examinee_name": examinee_name,
+            "answer_count": len(answers),
+            "elapsed_seconds": elapsed_seconds,
+        },
+    )
+    request.session.pop(f"test_access_{test.pk}", None)
+    request.session.pop(f"test_name_{test.pk}", None)
+    return True
 
 
 @require_http_methods(["GET", "POST"])
@@ -418,56 +787,102 @@ def take_test(request, test_id):
             return redirect("take_test", test_id=test.pk)
         return render(request, "core/examinee_name.html", {"form": name_form, "test": test})
     items = list(test.items.all())
-    if request.method == "POST":
-        answers = []
-        for item in items:
-            values = request.POST.getlist(f"question_{item.pk}")
-            value = values if item.question_type == Question.Type.MULTIPLE else (values[0] if values else "")
-            if item.question_type in (Question.Type.SINGLE, Question.Type.MULTIPLE):
-                allowed = {str(index) for index in range(len(item.options))}
-                if any(choice not in allowed for choice in (value if isinstance(value, list) else [value]) if choice):
-                    messages.error(request, "Ungültige Antwortoption. Bitte erneut versuchen.")
-                    return render(request, "core/take_test.html", {"test": test, "questions": _public_questions(test)}, status=400)
-            score, manual = grade_answer(item, {"value": value})
-            answers.append(Submission(test=test, test_question=item, answer={"value": value}, score=score, needs_manual_grading=manual))
-        with transaction.atomic():
-            # Bedingtes Update als Compare-and-swap schützt vor parallelen OTP-Einlösungen.
-            updated = TestSession.objects.filter(pk=test.pk, status=TestSession.Status.ISSUED).update(
-                status=TestSession.Status.COMPLETED,
-                completed_at=timezone.now(),
-                examinee_name=request.session[name_session_key],
-            )
-            if updated != 1:
+    if test.started_at is None:
+        TestSession.objects.filter(
+            pk=test.pk, status=TestSession.Status.ISSUED, started_at__isnull=True,
+        ).update(started_at=timezone.now())
+        test.refresh_from_db()
+    deadline = (
+        test.started_at + timedelta(minutes=test.time_limit_minutes)
+        if test.started_at and test.time_limit_minutes is not None else None
+    )
+    timed_out = deadline is not None and timezone.now() >= deadline
+    if request.method == "POST" or timed_out:
+        if not _finish_test(
+            request, test, items, request.POST, request.session[name_session_key], timed_out,
+        ):
+            if TestSession.objects.filter(pk=test.pk, status=TestSession.Status.COMPLETED).exists():
                 return render(request, "core/test_unavailable.html", status=410)
-            Submission.objects.bulk_create(answers)
-        record_event(
-            request, AuditLog.Category.SUBMISSION, "submission.completed", "Prüfling hat den Test abgegeben.",
-            "test", test.pk, {"examinee_name": request.session[name_session_key], "answer_count": len(answers)},
-        )
-        request.session.pop(session_key, None)
-        request.session.pop(name_session_key, None)
-        return render(request, "core/test_complete.html")
-    return render(request, "core/take_test.html", {"test": test, "questions": _public_questions(test)})
+            return render(request, "core/take_test.html", {
+                "test": test, "questions": _public_questions(test),
+                "remaining_seconds": max(1, math.ceil((deadline - timezone.now()).total_seconds()))
+                if deadline else None,
+                "remaining_milliseconds": max(0, int((deadline - timezone.now()).total_seconds() * 1000))
+                if deadline else None,
+            }, status=400)
+        return render(request, "core/test_complete.html", {"test": test})
+    return render(request, "core/take_test.html", {
+        "test": test,
+        "questions": _public_questions(test),
+        "remaining_seconds": max(1, math.ceil((deadline - timezone.now()).total_seconds()))
+        if deadline else None,
+        "remaining_milliseconds": max(0, int((deadline - timezone.now()).total_seconds() * 1000))
+        if deadline else None,
+    })
 
 
 @login_required
 def submissions(request):
-    """Zeigt nur Tests, deren Fragenpool für den Mitarbeiter freigegeben ist."""
-    allowed_pool_ids = accessible_pools(request.user, "submissions").values_list("pk", flat=True)
-    if not is_administrator(request.user) and not accessible_pools(request.user, "submissions").exists():
+    """Zeigt freigegebene Testabgaben, optional gefiltert nach Prüfungstyp."""
+    submission_pools = accessible_pools(request.user, "submissions").order_by("name")
+    if not is_administrator(request.user) and not submission_pools.exists():
         return render(request, "core/403.html", {"capability": "can_view_submissions_pool"}, status=403)
+    selected_pool_id = request.GET.get("pool", "")
+    selected_pool = None
+    if selected_pool_id:
+        if not selected_pool_id.isdecimal():
+            return render(request, "core/403.html", {"capability": "can_view_submissions_pool"}, status=403)
+        selected_pool = submission_pools.filter(pk=selected_pool_id).first()
+        if selected_pool is None:
+            return render(request, "core/403.html", {"capability": "can_view_submissions_pool"}, status=403)
     completed_tests = TestSession.objects.filter(
         status=TestSession.Status.COMPLETED,
-        question_pool_id__in=allowed_pool_ids,
+        question_pool__in=submission_pools,
     ).select_related("question_pool").order_by("-completed_at")
+    if selected_pool is not None:
+        completed_tests = completed_tests.filter(question_pool=selected_pool)
+    search_query = request.GET.get("q", "").strip()[:120]
+    pending_only = request.GET.get("pending") == "1"
+    date_from = request.GET.get("from", "")
+    date_to = request.GET.get("to", "")
+    parsed_date_from = _parse_filter_date(date_from)
+    parsed_date_to = _parse_filter_date(date_to)
+    if date_from and parsed_date_from is None:
+        messages.error(request, "Das Filterdatum „Von“ ist ungültig.")
+    if date_to and parsed_date_to is None:
+        messages.error(request, "Das Filterdatum „Bis“ ist ungültig.")
+    if search_query:
+        completed_tests = completed_tests.annotate(pk_text=Cast("pk", CharField()))
+        completed_tests = completed_tests.filter(
+            Q(examinee_name__icontains=search_query) | Q(pk_text__icontains=search_query)
+        )
+    if pending_only:
+        completed_tests = completed_tests.filter(submissions__needs_manual_grading=True).distinct()
+    if parsed_date_from:
+        completed_tests = completed_tests.filter(completed_at__date__gte=parsed_date_from)
+    if parsed_date_to:
+        completed_tests = completed_tests.filter(completed_at__date__lte=parsed_date_to)
+    test_page = Paginator(completed_tests, 50).get_page(request.GET.get("page"))
     summaries = []
-    for test in completed_tests:
+    for test in test_page.object_list:
         # Getrennte Abfragen verhindern Summenvervielfachung durch mehrere Join-Beziehungen.
         possible = test.items.aggregate(total=Sum("points"))["total"] or Decimal("0")
         earned = test.submissions.filter(score__isnull=False).aggregate(total=Sum("score"))["total"] or Decimal("0")
         pending = test.submissions.filter(needs_manual_grading=True).count()
         summaries.append({"test": test, "possible": possible, "earned": earned, "pending": pending})
-    return render(request, "core/submissions.html", {"summaries": summaries})
+    return render(request, "core/submissions.html", {
+        "summaries": summaries,
+        "test_page": test_page,
+        "result_count": test_page.paginator.count,
+        "submission_pools": submission_pools,
+        "selected_pool": selected_pool,
+        "search_query": search_query,
+        "pending_only": pending_only,
+        "date_from": date_from,
+        "date_to": date_to,
+        "filter_query": request.GET.urlencode(),
+        "pagination_query": _query_without_page(request.GET),
+    })
 
 
 @require_capability("can_delete_tests")
@@ -488,13 +903,70 @@ def delete_test(request, test_id):
 
 
 @login_required
+@require_http_methods(["GET", "POST"])
 def submission_detail(request, test_id):
-    """Zeigt nach Klick auf einen Test alle Fragen und Antworten dieses Prüflings."""
+    """Zeigt eine Prüfung und speichert alle geänderten Punkte gemeinsam."""
     test = get_object_or_404(TestSession, pk=test_id, status=TestSession.Status.COMPLETED)
     if not has_pool_access(request.user, test.question_pool, "submissions"):
         return render(request, "core/403.html", {"capability": "can_view_submissions_pool"}, status=403)
     answer_query = Submission.objects.filter(test=test).select_related("test_question", "graded_by").order_by("test_question__position")
     answers = list(answer_query)
+    can_grade_submissions = has_pool_access(request.user, test.question_pool, "submissions")
+    score_values = {}
+    if request.method == "POST":
+        if not can_grade_submissions:
+            return render(request, "core/403.html", {"capability": "can_view_submissions_pool"}, status=403)
+        updates = []
+        score_values = {
+            answer.pk: request.POST[f"score_{answer.pk}"]
+            for answer in answers
+            if f"score_{answer.pk}" in request.POST
+        }
+        for answer in answers:
+            field_name = f"score_{answer.pk}"
+            if field_name not in request.POST:
+                continue
+            raw_score = request.POST[field_name].strip()
+            if not raw_score:
+                continue
+            try:
+                score = Decimal(raw_score)
+                if not score.is_finite() or score < 0 or score > answer.test_question.points:
+                    raise InvalidOperation
+            except (InvalidOperation, ValueError):
+                messages.error(
+                    request,
+                    f"Bitte für Frage {answer.test_question.position} eine gültige Punktzahl "
+                    f"zwischen 0 und {answer.test_question.points} angeben. Es wurde nichts gespeichert.",
+                )
+                break
+            if score != answer.score or answer.needs_manual_grading:
+                updates.append((answer, score))
+        else:
+            with transaction.atomic():
+                for answer, score in updates:
+                    answer.score = score
+                    answer.needs_manual_grading = False
+                    answer.graded_by = request.user
+                    answer.graded_at = timezone.now()
+                    answer.save(update_fields=["score", "needs_manual_grading", "graded_by", "graded_at"])
+                    record_event(
+                        request, AuditLog.Category.SUBMISSION, "submission.graded",
+                        "Antwortpunkte in der gemeinsamen Prüfungskorrektur gespeichert.",
+                        "submission", answer.pk,
+                        {
+                            "test_id": str(test.pk),
+                            "question_position": answer.test_question.position,
+                            "score": str(score),
+                        },
+                    )
+            messages.success(request, "Punkte für den Test wurden gespeichert.")
+            detail_url = reverse("submission_detail", args=[test.pk])
+            filter_query = request.GET.urlencode()
+            return redirect(f"{detail_url}?{filter_query}#score-save-top" if filter_query else f"{detail_url}#score-save-top")
+        for answer in answers:
+            answer.form_score_is_posted = answer.pk in score_values
+            answer.form_score = score_values.get(answer.pk, answer.score)
     for answer in answers:
         # Verbindet gespeicherte Optionsindizes mit den internen Lösungsschlüsseln für die Korrektursicht.
         if answer.test_question.question_type in (Question.Type.SINGLE, Question.Type.MULTIPLE):
@@ -513,38 +985,47 @@ def submission_detail(request, test_id):
     possible = test.items.aggregate(total=Sum("points"))["total"] or Decimal("0")
     earned = answer_query.filter(score__isnull=False).aggregate(total=Sum("score"))["total"] or Decimal("0")
     pending = answer_query.filter(needs_manual_grading=True).count()
+    navigation_tests = TestSession.objects.filter(
+        status=TestSession.Status.COMPLETED, question_pool=test.question_pool,
+    ).order_by("-completed_at")
+    navigation_search = request.GET.get("q", "").strip()[:120]
+    navigation_pending = request.GET.get("pending") == "1"
+    navigation_from = request.GET.get("from", "")
+    navigation_to = request.GET.get("to", "")
+    if navigation_search:
+        navigation_tests = navigation_tests.annotate(pk_text=Cast("pk", CharField())).filter(
+            Q(examinee_name__icontains=navigation_search)
+            | Q(pk_text__icontains=navigation_search)
+        )
+    if navigation_pending:
+        navigation_tests = navigation_tests.filter(submissions__needs_manual_grading=True).distinct()
+    parsed_from = _parse_filter_date(navigation_from)
+    parsed_to = _parse_filter_date(navigation_to)
+    if navigation_from and parsed_from is None:
+        messages.error(request, "Das Filterdatum „Von“ ist ungültig.")
+    if navigation_to and parsed_to is None:
+        messages.error(request, "Das Filterdatum „Bis“ ist ungültig.")
+    if parsed_from:
+        navigation_tests = navigation_tests.filter(completed_at__date__gte=parsed_from)
+    if parsed_to:
+        navigation_tests = navigation_tests.filter(completed_at__date__lte=parsed_to)
+    navigation_ids = list(navigation_tests.values_list("pk", flat=True))
+    current_index = navigation_ids.index(test.pk) if test.pk in navigation_ids else -1
+    previous_test_id = navigation_ids[current_index - 1] if current_index > 0 else None
+    next_test_id = (
+        navigation_ids[current_index + 1]
+        if 0 <= current_index < len(navigation_ids) - 1 else None
+    )
+    filter_query = request.GET.urlencode()
     return render(request, "core/submission_detail.html", {
         "test": test, "answers": answers, "possible": possible, "earned": earned, "pending": pending,
-        "can_grade_submissions": has_pool_access(request.user, test.question_pool, "submissions"),
+        "can_grade_submissions": can_grade_submissions,
+        "score_values": score_values,
+        "previous_test_id": previous_test_id,
+        "next_test_id": next_test_id,
+        "filter_query": filter_query,
+        "navigation_pending": navigation_pending,
     })
-
-
-@login_required
-@require_POST
-def grade_submission(request, pk):
-    """Vergibt oder korrigiert Punkte; die Detailansicht berechnet Summen neu."""
-    submission = get_object_or_404(Submission.objects.select_related("test"), pk=pk, test__status=TestSession.Status.COMPLETED)
-    if not has_pool_access(request.user, submission.test.question_pool, "submissions"):
-        return render(request, "core/403.html", {"capability": "can_view_submissions_pool"}, status=403)
-    try:
-        score = Decimal(request.POST.get("score", ""))
-        if not score.is_finite() or score < 0 or score > submission.test_question.points:
-            raise InvalidOperation
-    except (InvalidOperation, ValueError):
-        messages.error(request, "Bitte eine gültige Punktzahl innerhalb des Fragenmaximums angeben.")
-        return redirect("submissions")
-    submission.score = score
-    submission.needs_manual_grading = False
-    submission.graded_by = request.user
-    submission.graded_at = timezone.now()
-    submission.save(update_fields=["score", "needs_manual_grading", "graded_by", "graded_at"])
-    record_event(
-        request, AuditLog.Category.SUBMISSION, "submission.graded", "Antwortpunkte manuell gespeichert.",
-        "submission", submission.pk,
-        {"test_id": str(submission.test_id), "question_position": submission.test_question.position, "score": str(score)},
-    )
-    messages.success(request, "Freitextantwort wurde bewertet.")
-    return redirect("submission_detail", test_id=submission.test_id)
 
 
 @require_capability("can_manage_users")
@@ -602,22 +1083,90 @@ def user_edit(request, pk):
         )
         messages.success(request, "Mitarbeiterkonto wurde aktualisiert.")
         return redirect("users_dashboard")
-    return render(request, "core/user_form.html", {"form": form, "title": "Mitarbeiter bearbeiten"})
+    return render(request, "core/user_form.html", {
+        "form": form,
+        "title": "Mitarbeiter bearbeiten",
+        "effective_permission_names": _effective_academy_permissions(user),
+    })
 
 
 @require_capability("can_view_audit_logs")
 def audit_logs(request):
-    """Zeigt das zugriffsgeschützte Protokoll mit Kategorieauswahl und Seiten."""
+    """Zeigt das zugriffsgeschützte Protokoll mit Filtern und Seiten."""
     selected_category = request.GET.get("category", "")
-    entries = AuditLog.objects.select_related("actor")
-    if selected_category in AuditLog.Category.values:
-        entries = entries.filter(category=selected_category)
+    for date_field, label in (("from", "Von"), ("to", "Bis")):
+        raw_date = request.GET.get(date_field, "")
+        if raw_date and _parse_filter_date(raw_date) is None:
+            messages.error(request, f"Das Filterdatum „{label}“ ist ungültig.")
+    entries = _filtered_audit_logs(request)
     page = Paginator(entries, 100).get_page(request.GET.get("page"))
     return render(request, "core/audit_logs.html", {
         "page": page,
         "categories": AuditLog.Category.choices,
         "selected_category": selected_category,
+        "actor_query": request.GET.get("actor", "").strip()[:100],
+        "action_query": request.GET.get("action", "").strip()[:100],
+        "date_from": request.GET.get("from", ""),
+        "date_to": request.GET.get("to", ""),
+        "export_query": request.GET.urlencode(),
     })
+
+
+def _filtered_audit_logs(request):
+    """Applies supported audit filters consistently to the log and CSV export."""
+    entries = AuditLog.objects.select_related("actor")
+    selected_category = request.GET.get("category", "")
+    actor_query = request.GET.get("actor", "").strip()[:100]
+    action_query = request.GET.get("action", "").strip()[:100]
+    date_from = request.GET.get("from", "")
+    date_to = request.GET.get("to", "")
+    parsed_from = _parse_filter_date(date_from)
+    parsed_to = _parse_filter_date(date_to)
+    if selected_category in AuditLog.Category.values:
+        entries = entries.filter(category=selected_category)
+    if actor_query:
+        entries = entries.filter(actor__username__icontains=actor_query)
+    if action_query:
+        entries = entries.filter(Q(action__icontains=action_query) | Q(description__icontains=action_query))
+    if parsed_from:
+        entries = entries.filter(created_at__date__gte=parsed_from)
+    if parsed_to:
+        entries = entries.filter(created_at__date__lte=parsed_to)
+    return entries
+
+
+@require_capability("can_view_audit_logs")
+def audit_logs_export(request):
+    """Exportiert ausschließlich die gefilterten Audit-Einträge als CSV."""
+    if any(
+        request.GET.get(field) and _parse_filter_date(request.GET[field]) is None
+        for field in ("from", "to")
+    ):
+        return HttpResponseBadRequest("Ein übergebenes Filterdatum ist ungültig.")
+    response = HttpResponse(content_type="text/csv; charset=utf-8")
+    response["Content-Disposition"] = 'attachment; filename="systemprotokoll.csv"'
+    response.write("\ufeff")
+    writer = csv.writer(response)
+    writer.writerow(("Zeitpunkt", "Benutzer", "Kategorie", "Aktion", "Beschreibung", "Objekttyp", "Objekt-ID", "IP-Adresse", "Browserkennung"))
+    for entry in _filtered_audit_logs(request).order_by("-created_at", "-pk").iterator():
+        values = (
+            timezone.localtime(entry.created_at).isoformat(),
+            entry.actor.username if entry.actor else "",
+            entry.get_category_display(),
+            entry.action,
+            entry.description,
+            entry.object_type,
+            entry.object_id,
+            entry.ip_address or "",
+            entry.user_agent,
+        )
+        writer.writerow(tuple(
+            f"\t{value}"
+            if isinstance(value, str) and value.lstrip(" \t\r\n").startswith(("=", "+", "-", "@"))
+            else value
+            for value in values
+        ))
+    return response
 
 
 @require_capability("can_view_audit_logs")

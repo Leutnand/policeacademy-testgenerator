@@ -13,8 +13,8 @@ COPY requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY --chown=app:app . .
-RUN mkdir -p /data /app/staticfiles \
-    && chown -R app:app /data /app/staticfiles
+RUN mkdir -p /data /app/staticfiles /app/media \
+    && chown -R app:app /data /app/staticfiles /app/media
 
 USER app
 EXPOSE 8000

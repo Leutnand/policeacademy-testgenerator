@@ -1,0 +1,20 @@
+{% extends 'base.html' %}
+{% block title %}Datenschutzerklärung bestätigen{% endblock %}
+{% block content %}
+<section class="legal-document privacy-acceptance">
+  <div class="section-kicker">MITARBEITERZUGANG / DATENSCHUTZ</div>
+  <h1>Datenschutzerklärung bestätigen</h1>
+  {% if policy_configured %}
+    <div class="privacy-policy-content">{{ tool_settings.privacy_policy|linebreaks }}</div>
+    <form method="post" class="stack-form">
+      {% csrf_token %}
+      <label class="check-line">{{ form.accepted }}<span>{{ form.accepted.label }}</span></label>
+      {% for error in form.accepted.errors %}<span class="field-error">{{ error }}</span>{% endfor %}
+      <button class="button primary" type="submit">Bestätigen und fortfahren</button>
+    </form>
+  {% else %}
+    <p>Die Datenschutzerklärung wurde noch nicht eingerichtet. Bitte wende dich an die Administration.</p>
+    {% if user.is_superuser %}<a class="button primary" href="{% url 'tool_settings' %}">Datenschutzerklärung einrichten</a>{% endif %}
+  {% endif %}
+</section>
+{% endblock %}

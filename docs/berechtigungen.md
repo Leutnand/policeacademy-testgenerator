@@ -1,12 +1,10 @@
 # Berechtigungskatalog
 
-Diese Übersicht beschreibt die Berechtigungen der Police Academy, ihre Voraussetzungen und die technischen Django-Rechte. Rechte werden in Gruppen oder direkt an Mitarbeiter vergeben. Die wirksamen Rechte eines Kontos sind die Vereinigung aus beiden Quellen; dasselbe Recht doppelt zuzuweisen erhöht den Zugriff nicht.
+Diese Übersicht beschreibt die Berechtigungen der Police Academy und ihre Voraussetzungen. Rechte werden in Gruppen oder direkt an Mitarbeiter vergeben. Die wirksamen Rechte eines Kontos sind die Vereinigung aus beiden Quellen; dasselbe Recht doppelt zuzuweisen erhöht den Zugriff nicht.
 
 ## Keine Dubletten
 
-Ein Django-Recht ist durch Anwendung, Modell und Codename eindeutig, zum Beispiel `core.can_view_pool_3`. Die Datenbank erzwingt diese Eindeutigkeit. Die Rechteansicht listet jede gespeicherte Permission genau einmal.
-
-Ähnlich benannte Rechte können absichtlich verschiedene Geltungsbereiche haben. Ein dynamisches Poolrecht gilt in der Academy-Anwendung nur für den betreffenden Pool. Ein Django-Modellrecht kann stattdessen eine Modellaktion im technischen Django-Admin erlauben. Die Abschnitte im Rechteeditor benennen diese Ebenen getrennt.
+Die Datenbank identifiziert jedes Recht eindeutig anhand von Anwendung, Modell und Codename. Der Rechteeditor bietet nur die globalen Academy-Rechte und Poolrechte an, die die Anwendung tatsächlich prüft.
 
 Direktrechte und Gruppenrechte werden additiv ausgewertet. Ist ein Recht sowohl direkt als auch über eine Gruppe vergeben, bleibt es effektiv nur einmal erlaubt. Der aktuelle Datenbankabgleich fand keine direkt-und-Gruppen-Überschneidungen.
 
@@ -21,6 +19,7 @@ Diese Rechte steuern Funktionen der Mitarbeiteroberfläche und werden serverseit
 | Codename | Wirkung und Voraussetzung |
 | --- | --- |
 | `core.can_manage_users` | Mitarbeiterliste sowie Mitarbeiter-Stammdaten und Mitarbeiter-Rechteformular öffnen. Für Änderungen an Gruppen und Einzelrechten ist zusätzlich das passende Grant- oder Revoke-Recht nötig. |
+| `core.can_manage_tool_settings` | Branding, Logintexte, Site-Icon, Testgrenzen, Datenschutzerklärung und Impressum unter Tool-Einstellungen bearbeiten. |
 | `core.can_delete_tests` | Abgegebene Tests löschen. Erfordert außerdem das Auswertungsrecht für den Fragenpool des Tests. |
 | `core.can_view_audit_logs` | Das Systemprotokoll ansehen. |
 | `core.can_clear_audit_logs` | Das Systemprotokoll manuell leeren. Erfordert zusätzlich `can_view_audit_logs`; der Löschvorgang bleibt selbst als neuer Eintrag erhalten. |
@@ -33,34 +32,25 @@ Die beiden Nutzerrechte Grant und Revoke sind absichtlich getrennt. Gleiches gil
 
 ## Poolrechte
 
-Für jeden Fragenpool erzeugt die Anwendung vier eigene Rechte. Die Pool-ID im Codename begrenzt das Recht auf genau diesen Pool.
+Für jeden Fragenpool erzeugt die Anwendung fünf eigene Rechte. Die Pool-ID im Codename begrenzt das Recht auf genau diesen Pool.
 
 | Muster | Wirkung |
 | --- | --- |
 | `core.can_view_pool_<id>` | Fragen des Pools in der Fragenbank ansehen. |
 | `core.can_edit_pool_<id>` | Fragen dieses Pools anlegen, bearbeiten und löschen. Zusätzlich ist das View-Recht erforderlich. |
+| `core.can_import_export_pool_<id>` | CSV-Fragen dieses Pools importieren und exportieren. Der Export enthält interne Lösungsschlüssel. |
 | `core.can_generate_test_from_pool_<id>` | Tests ausschließlich aus diesem Pool erstellen. |
 | `core.can_view_submissions_pool_<id>` | Abgaben dieses Pools ansehen und bewerten. |
 
-Poolrechte tauchen im Editor als eigener Abschnitt pro Pool auf. Zwei gleichartige Aktionen für unterschiedliche Pools sind keine Dubletten, sondern getrennte Freigaben.
+Poolrechte tauchen im Editor als eigener Abschnitt pro Pool auf. Zwei gleichartige Aktionen für unterschiedliche Pools sind keine Dubletten, sondern getrennte Freigaben. Die technischen Django-Modellrechte sind für die eigene Mitarbeiteroberfläche nicht relevant und werden nicht zur Vergabe angeboten. Das technische Django-Admin ist deaktiviert; Django-Authentifizierung, Gruppen, Berechtigungen, Sessions und Content-Types bleiben als interne Grundlagen der Anwendung bestehen.
 
-## Django-Modellrechte
+## Sortierung
 
-Django legt für Modelle standardmäßig die Rechte `add_<model>`, `change_<model>`, `delete_<model>` und `view_<model>` an. Sie beziehen sich auf das technische Datenmodell, nicht automatisch auf die Academy-Oberfläche. Sie sind vor allem für Django-Admin-Ansichten relevant, sofern das Modell dort registriert ist und der Account überhaupt Django-Admin-Zugang hat.
+Jede Rechtegruppe hat eine positive Sortierzahl. Die Gruppenübersicht sortiert aufsteigend nach dieser Zahl; bei gleicher Zahl entscheidet der Gruppenname alphabetisch. Bestehende Gruppen erhalten bei der Migration zunächst fortlaufende Sortierzahlen in alphabetischer Reihenfolge.
 
-Beispiele sind `core.change_question` für eine Frage oder `auth.add_user` für ein Benutzerkonto. Diese Modellrechte ersetzen keine Poolrechte. `core.can_edit_pool_<id>` steuert die Academy-Fragenoberfläche; ein Django-Modellrecht steuert dagegen die entsprechende technische Admin-Aktion.
+## Datenschutzerklärung und Tool-Einstellungen
 
-Das Audit-Log ist im Django-Admin schreibgeschützt: die `AuditLogAdmin`-Ansicht verweigert Hinzufügen, Ändern und Löschen unabhängig von den Standard-Modellrechten. Fragen, Tests und Abgaben sind für Superuser im Django-Admin registriert. Nicht registrierte Modelle erhalten zwar Django-Standardrechte in der Datenbank, haben dadurch aber keine eigene Admin-Ansicht in dieser Anwendung.
-
-## Sitzungsrechte
-
-Die Rechte `sessions.add_session`, `sessions.change_session`, `sessions.delete_session` und `sessions.view_session` betreffen Zeilen des Modells `django.contrib.sessions.Session`, also gespeicherte Browser-Sitzungen. Sie bedeuten nicht „anmelden dürfen“, legen keine Login-Dauer fest und vergeben keine Academy-Rechte.
-
-Die Anwendung stellt keine Sitzungsverwaltung bereit und registriert das Session-Modell nicht im Django-Admin. Diese Rechte haben deshalb im normalen Academy-Ablauf keine Wirkung. Sitzungsdatensätze können Login-Zustand enthalten; die Rechte sollten nur bei einem konkreten technischen Verwaltungsbedarf vergeben werden.
-
-## Weitere technische Rechte
-
-Django zeigt außerdem Standardrechte für Gruppen und Benutzer (`auth`), Admin-Protokolleinträge (`admin`) und Content-Types (`contenttypes`) an. Sie sind vom Academy-RBAC getrennt und wirken nur in Django-Komponenten, die diese Modellrechte tatsächlich prüfen. Sie ersetzen insbesondere nicht `can_manage_users`, Poolrechte oder die gesonderten Grant-/Revoke-Rechte.
+Mitarbeiter mit `core.can_manage_tool_settings` können die Datenschutzerklärung und das Impressum sowie Namen, Logintexte, Site-Icon und globale Fragenzahlgrenzen unter **Tool-Einstellungen** verwalten. Ist eine Erklärung hinterlegt, müssen angemeldete Mitarbeiter ihre aktuelle Textfassung bestätigen, bevor sie andere Mitarbeiterfunktionen verwenden. Eine Textänderung erfordert eine erneute Bestätigung; gespeichert wird ein Hash der bestätigten Fassung.
 
 ## Log-Aufbewahrung
 

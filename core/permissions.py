@@ -5,11 +5,13 @@ ADMINISTRATOR_GROUP = "Administrator"
 POOL_PERMISSION_PREFIXES = {
     "view": "can_view_pool_",
     "edit": "can_edit_pool_",
+    "import_export": "can_import_export_pool_",
     "generate": "can_generate_test_from_pool_",
     "submissions": "can_view_submissions_pool_",
 }
 GLOBAL_PERMISSION_CODES = {
     "can_manage_users": "core.can_manage_users",
+    "can_manage_tool_settings": "core.can_manage_tool_settings",
     "can_delete_tests": "core.can_delete_tests",
     "can_view_audit_logs": "core.can_view_audit_logs",
     "can_clear_audit_logs": "core.can_clear_audit_logs",
@@ -47,6 +49,7 @@ def pool_permission_name(action, question_pool):
     labels = {
         "view": "Fragenpool einsehen",
         "edit": "Fragen im Pool bearbeiten, hinzufügen und löschen",
+        "import_export": "Fragen im Pool importieren und exportieren",
         "generate": "Tests aus diesem Pool generieren",
         "submissions": "Abgaben dieses Pools einsehen und bewerten",
     }
@@ -102,6 +105,8 @@ def navigation_permissions(request):
         "can_delete_tests": has_access(user, "can_delete_tests"),
         "has_viewable_question_pools": has_any_pool_access(user, "view"),
         "has_editable_question_pools": has_any_pool_access(user, "edit"),
+        "has_csv_question_pools": has_any_pool_access(user, "import_export"),
+        "can_manage_tool_settings": has_access(user, "can_manage_tool_settings"),
         "has_generatable_question_pools": has_any_pool_access(user, "generate"),
         "has_viewable_submission_pools": has_any_pool_access(user, "submissions"),
     }
