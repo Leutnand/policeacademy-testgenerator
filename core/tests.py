@@ -1,4 +1,7 @@
 """Automatisierte Regressionstests für Auswahl, Geheimnisse, RBAC und OTP."""
+import csv
+import io
+import json
 from datetime import timedelta
 from decimal import Decimal
 from tempfile import TemporaryDirectory
@@ -239,27 +242,69 @@ class QuestionCsvTests(TestCase):
         )
         self.client.force_login(self.user)
 
-    def test_export_round_trips_all_question_settings_and_import_appends(self):
-        """CSV enthält Lösungen und Optionen und wird verlustfrei als neue Frage ergänzt."""
+    def test_exported_question_is_skipped_as_duplicate_on_reimport(self):
+        """Der Export ist verlustfrei und erneuter Import erstellt keine identische Frage."""
         response = self.client.get(reverse("question_export", args=[self.question_pool.pk]))
         self.assertEqual(response.status_code, 200)
         self.assertIn("attachment;", response["Content-Disposition"])
+        exported_rows = list(csv.reader(
+            io.StringIO(response.content.decode("utf-8-sig"), newline=""),
+            delimiter=";",
+        ))
+        self.assertEqual(len(exported_rows[0]), 6)
+        self.assertEqual(exported_rows[0][0], "text")
+        self.assertEqual(len(exported_rows[1]), 6)
         imported_file = SimpleUploadedFile(
             "questions.csv", response.content, content_type="text/csv",
         )
         response = self.client.post(
             reverse("question_import", args=[self.question_pool.pk]),
             {"file": imported_file},
+            follow=True,
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "1 identisches Duplikat wurde übersprungen.")
+        self.assertEqual(Question.objects.filter(question_pool=self.question_pool).count(), 1)
+
+    def test_import_accepts_legacy_comma_delimited_csv(self):
+        """Ältere CSV-Dateien bleiben importierbar und Duplikate innerhalb der Datei werden ausgelassen."""
+        contents = (
+            "text,question_type,points,answer_key,is_pinned,options_json\r\n"
+            'Legacy-Frage,short,1,,false,"[]"\r\n'
+            'Legacy-Frage,short,1,,false,"[]"\r\n'
+        )
+        upload = SimpleUploadedFile(
+            "legacy.csv", contents.encode("utf-8"), content_type="text/csv",
+        )
+        response = self.client.post(
+            reverse("question_import", args=[self.question_pool.pk]), {"file": upload},
+            follow=True,
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "1 identisches Duplikat wurde übersprungen.")
+        self.assertEqual(Question.objects.filter(
+            question_pool=self.question_pool, text="Legacy-Frage",
+        ).count(), 1)
+
+    def test_same_text_with_different_settings_is_not_treated_as_duplicate(self):
+        """Gleichlautende Fragen mit abweichender Punktzahl bleiben getrennte Fragen."""
+        contents = io.StringIO(newline="")
+        writer = csv.writer(contents, delimiter=";")
+        writer.writerow(("text", "question_type", "points", "answer_key", "is_pinned", "options_json"))
+        writer.writerow((
+            self.question.text, "single", "3.00", self.question.answer_key, "true",
+            json.dumps(self.question.options, separators=(",", ":")),
+        ))
+        upload = SimpleUploadedFile(
+            "different-settings.csv", contents.getvalue().encode("utf-8"), content_type="text/csv",
+        )
+        response = self.client.post(
+            reverse("question_import", args=[self.question_pool.pk]), {"file": upload},
         )
         self.assertRedirects(response, f"{reverse('admin_dashboard')}?pool={self.question_pool.pk}")
-        self.assertEqual(Question.objects.filter(question_pool=self.question_pool).count(), 2)
-        duplicate = Question.objects.filter(question_pool=self.question_pool).exclude(pk=self.question.pk).get()
-        self.assertEqual(duplicate.text, self.question.text)
-        self.assertEqual(duplicate.question_type, self.question.question_type)
-        self.assertEqual(duplicate.points, self.question.points)
-        self.assertEqual(duplicate.answer_key, self.question.answer_key)
-        self.assertEqual(duplicate.is_pinned, self.question.is_pinned)
-        self.assertEqual(duplicate.options, self.question.options)
+        self.assertEqual(Question.objects.filter(
+            question_pool=self.question_pool, text=self.question.text,
+        ).count(), 2)
 
     def test_invalid_csv_is_atomic_and_export_requires_edit_permission(self):
         """Fehlerhafte CSV-Zeilen erzeugen keine Teilimporte; Leserecht allein reicht nicht."""
@@ -289,6 +334,58 @@ class QuestionCsvTests(TestCase):
 
 class PermissionTests(TestCase):
     """Prüft serverseitige Rechte unabhängig von ausgeblendeten UI-Aktionen."""
+    def test_user_deletion_requires_its_permission_and_preserves_created_tests(self):
+        manager = get_user_model().objects.create_user(username="staff-delete-manager")
+        manager.user_permissions.add(*Permission.objects.filter(
+            content_type__app_label="core",
+            codename__in=("can_manage_users", "can_delete_users"),
+        ))
+        employee = get_user_model().objects.create_user(username="employee-to-delete")
+        question_pool = QuestionPool.objects.create(name="Mitarbeiter-Löschtest")
+        test = TestSession.objects.create(
+            created_by=employee, question_pool=question_pool, otp_hash=make_password("123456"),
+        )
+        self.client.force_login(manager)
+        dashboard = self.client.get(reverse("users_dashboard"))
+        self.assertContains(dashboard, reverse("user_delete", args=[employee.pk]))
+        self.assertEqual(
+            self.client.get(reverse("user_delete", args=[employee.pk])).status_code,
+            405,
+        )
+        response = self.client.post(reverse("user_delete", args=[employee.pk]))
+        self.assertRedirects(response, reverse("users_dashboard"))
+        self.assertFalse(get_user_model().objects.filter(pk=employee.pk).exists())
+        test.refresh_from_db()
+        self.assertIsNone(test.created_by)
+        deletion_log = AuditLog.objects.get(action="staff.deleted", object_id=str(employee.pk))
+        self.assertEqual(deletion_log.actor, manager)
+        self.assertEqual(deletion_log.metadata["username"], employee.username)
+
+    def test_user_deletion_is_denied_without_permission_and_protects_self_and_admins(self):
+        manager = get_user_model().objects.create_user(username="staff-manager")
+        manager.user_permissions.add(Permission.objects.get(
+            content_type__app_label="core", codename="can_manage_users",
+        ))
+        employee = get_user_model().objects.create_user(username="protected-employee")
+        self.client.force_login(manager)
+        self.assertEqual(self.client.post(reverse("user_delete", args=[employee.pk])).status_code, 403)
+
+        manager.user_permissions.add(Permission.objects.get(
+            content_type__app_label="core", codename="can_delete_users",
+        ))
+        self.assertRedirects(
+            self.client.post(reverse("user_delete", args=[manager.pk])),
+            reverse("users_dashboard"),
+        )
+        self.assertTrue(get_user_model().objects.filter(pk=manager.pk).exists())
+
+        administrator = get_user_model().objects.create_superuser(username="protected-admin")
+        self.assertEqual(
+            self.client.post(reverse("user_delete", args=[administrator.pk])).status_code,
+            403,
+        )
+        self.assertTrue(get_user_model().objects.filter(pk=administrator.pk).exists())
+
     def test_question_pool_requires_custom_permission(self):
         """Fragenübersicht wird erst durch das konkrete Pool-View-Recht geöffnet."""
         user = get_user_model().objects.create_user(username="editor", password="test-pass-123")
@@ -450,9 +547,13 @@ class PermissionTests(TestCase):
             "category": AuditLog.Category.STAFF,
         })
         self.assertEqual(export.status_code, 200)
-        self.assertIn("Änderung am Profil", export.content.decode("utf-8-sig"))
-        self.assertIn('\t  =HYPERLINK(""https://example.com"")', export.content.decode("utf-8-sig"))
-        self.assertNotIn("Test erstellt", export.content.decode("utf-8-sig"))
+        export_content = export.content.decode("utf-8-sig")
+        exported_rows = list(csv.reader(io.StringIO(export_content, newline=""), delimiter=";"))
+        self.assertEqual(len(exported_rows[0]), 9)
+        self.assertEqual(len(exported_rows[1]), 9)
+        self.assertIn("Änderung am Profil", export_content)
+        self.assertIn('\t  =HYPERLINK(""https://example.com"")', export_content)
+        self.assertNotIn("Test erstellt", export_content)
         unauthorized = get_user_model().objects.create_user(username="audit-export-denied")
         self.client.force_login(unauthorized)
         self.assertEqual(self.client.get(reverse("audit_logs_export")).status_code, 403)

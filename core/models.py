@@ -17,6 +17,7 @@ class QuestionPool(models.Model):
         ordering = ["name"]
         permissions = [
             ("can_manage_users", "Mitarbeiter, Gruppen und Rechte verwalten"),
+            ("can_delete_users", "Mitarbeiterkonten löschen"),
             ("can_manage_tool_settings", "Seiteneinstellungen verwalten"),
             ("can_delete_tests", "Abgegebene Tests löschen"),
             ("can_view_audit_logs", "Systemprotokoll einsehen"),
@@ -136,7 +137,10 @@ class TestSession(models.Model):
     otp_hash = models.CharField("OTP-Hash", max_length=256)
     examinee_name = models.CharField("Name des Prüflings", max_length=120, blank=True)
     status = models.CharField("Status", max_length=12, choices=Status.choices, default=Status.ISSUED)
-    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="generated_tests")
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="generated_tests",
+    )
     created_at = models.DateTimeField("Erstellt am", auto_now_add=True)
     time_limit_minutes = models.PositiveIntegerField("Zeitlimit in Minuten", null=True, blank=True)
     started_at = models.DateTimeField("Gestartet am", null=True, blank=True)

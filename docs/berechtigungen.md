@@ -19,6 +19,7 @@ Diese Rechte steuern Funktionen der Mitarbeiteroberfläche und werden serverseit
 | Codename | Wirkung und Voraussetzung |
 | --- | --- |
 | `core.can_manage_users` | Mitarbeiterliste sowie Mitarbeiter-Stammdaten und Mitarbeiter-Rechteformular öffnen. Für Änderungen an Gruppen und Einzelrechten ist zusätzlich das passende Grant- oder Revoke-Recht nötig. |
+| `core.can_delete_users` | Mitarbeiterkonten löschen; zusätzlich ist `can_manage_users` erforderlich. Eigene Konten und der letzte Administrator sind geschützt. Nur Administratoren dürfen andere Administratoren löschen. Zugehörige Tests bleiben erhalten; der Erstellerverweis wird entfernt. |
 | `core.can_manage_tool_settings` | Branding, Logintexte, Site-Icon, Testgrenzen, Datenschutzerklärung und Impressum unter Tool-Einstellungen bearbeiten. |
 | `core.can_delete_tests` | Abgegebene Tests löschen. Erfordert außerdem das Auswertungsrecht für den Fragenpool des Tests. |
 | `core.can_view_audit_logs` | Das Systemprotokoll ansehen. |
@@ -28,7 +29,7 @@ Diese Rechte steuern Funktionen der Mitarbeiteroberfläche und werden serverseit
 | `core.can_grant_administrator` | Einer anderen Person den Administratorstatus geben. Erfordert `can_manage_users`; Admin-Status kann nicht über eine Gruppe vergeben werden. |
 | `core.can_revoke_administrator` | Einer anderen Person den Administratorstatus entziehen. Erfordert `can_manage_users`; der eigene Status bleibt geschützt. |
 
-Die beiden Nutzerrechte Grant und Revoke sind absichtlich getrennt. Gleiches gilt für Administratorstatus vergeben und entziehen. Nur Administratoren können die Rechte für Logleerung und Rechte-Delegation weitergeben.
+Die Nutzerrechte Grant und Revoke sind absichtlich getrennt. Gleiches gilt für Administratorstatus vergeben und entziehen. Das Löschrecht für Mitarbeiterkonten kann nur ein Administrator delegieren. Nur Administratoren können außerdem die Rechte für Logleerung, Rechte-Delegation und Kontolöschung weitergeben.
 
 ## Poolrechte
 
@@ -38,7 +39,7 @@ Für jeden Fragenpool erzeugt die Anwendung fünf eigene Rechte. Die Pool-ID im 
 | --- | --- |
 | `core.can_view_pool_<id>` | Fragen des Pools in der Fragenbank ansehen. |
 | `core.can_edit_pool_<id>` | Fragen dieses Pools anlegen, bearbeiten und löschen. Zusätzlich ist das View-Recht erforderlich. |
-| `core.can_import_export_pool_<id>` | CSV-Fragen dieses Pools importieren und exportieren. Der Export enthält interne Lösungsschlüssel. |
+| `core.can_import_export_pool_<id>` | CSV-Fragen dieses Pools importieren und exportieren. Zusätzlich ist `core.can_view_pool_<id>` erforderlich. Der Excel-freundliche Export enthält interne Lösungsschlüssel. |
 | `core.can_generate_test_from_pool_<id>` | Tests ausschließlich aus diesem Pool erstellen. |
 | `core.can_view_submissions_pool_<id>` | Abgaben dieses Pools ansehen und bewerten. |
 

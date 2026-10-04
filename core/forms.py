@@ -118,6 +118,7 @@ def add_permission_checkboxes(form, selected_ids=()):
     }
     global_help = {
         "can_manage_users": "Öffnet die Mitarbeiterverwaltung. Rechteänderungen brauchen zusätzlich das passende Recht zum Vergeben oder Entziehen.",
+        "can_delete_users": "Löscht Mitarbeiterkonten. Das eigene Konto und andere Administratoren sind geschützt.",
         "can_manage_tool_settings": "Erlaubt Branding, Logintexte, Testgrenzen und Datenschutztexte in den Tool-Einstellungen zu ändern.",
         "can_delete_tests": "Löscht abgeschlossene Tests. Zusätzlich ist Auswertungszugriff auf den zugehörigen Pool erforderlich.",
         "can_view_audit_logs": "Zeigt Zugriffe und Änderungen im Systemprotokoll an.",

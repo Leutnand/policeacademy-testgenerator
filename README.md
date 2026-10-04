@@ -25,7 +25,7 @@ Administratoren können unter **Einstellungen** globale Mindest- und Höchstzahl
 
 Bei einer Auswahlfrage werden pro Zeile Antworttext und Korrekt-Markierung gepflegt. Single Choice verlangt genau eine richtige Antwort, Multiple Choice mindestens eine richtige Antwort. Im Datensatz sieht die interne Darstellung beispielsweise so aus:
 
-Fragen lassen sich je Fragenpool als CSV exportieren oder ergänzend importieren. Die Datei enthält `text`, `question_type`, `points`, `answer_key`, `is_pinned` und `options_json`; Antwortoptionen werden als JSON in einer CSV-Zelle serialisiert. Der Import akzeptiert UTF-8-Dateien bis 5 MB und 5.000 Zeilen, prüft die gesamte Datei und speichert bei Fehlern keine Teilmenge. Er fügt Fragen hinzu und aktualisiert oder löscht keine bestehenden Fragen. Export und Import sind auf Personen mit Bearbeitungsrecht für den jeweiligen Pool beschränkt, da der Export interne Lösungsschlüssel enthält.
+Fragen lassen sich je Fragenpool als CSV exportieren oder ergänzend importieren. Die Excel-freundliche Datei verwendet UTF-8 mit BOM und in deutscher Excel-Umgebung übliche Semikolon-Trennzeichen. Sie enthält `text`, `question_type`, `points`, `answer_key`, `is_pinned` und `options_json`; Antwortoptionen werden als JSON in einer CSV-Zelle serialisiert. Der Import erkennt sowohl dieses Semikolonformat als auch ältere komma-getrennte Dateien. Er akzeptiert UTF-8-Dateien bis 5 MB und 5.000 Zeilen, prüft die gesamte Datei und speichert bei Fehlern keine Teilmenge. Identische Fragen im selben Fragenpool werden anhand von Fragetext, Typ, Punkten, Musterlösung, Verankerung und Antwortoptionen übersprungen; unterschiedliche Einstellungen bleiben importierbar. Bestehende Fragen werden weder verändert noch gelöscht. Für Export und Import sind sowohl das Ansichtsrecht als auch das separate Import-/Exportrecht des jeweiligen Pools erforderlich, da der Export interne Lösungsschlüssel enthält.
 
 ```json
 [
@@ -67,18 +67,19 @@ Das RBAC verwendet Djangos `User`, `Group` und `Permission`. Berechtigungen werd
 
 **Administrator**
 
-`is_superuser=True` ist die einzige Administratorrolle und gewährt uneingeschränkten Zugriff. Die frühere Gruppe **Administrator** wird per Migration in diesen Status überführt und anschließend entfernt. Nur Administratoren sehen den Rechtegruppen-Tab unter **Personal** und dürfen Rechte delegieren. Die festen Gruppen „Fragen-Editor“, „Test-Manager“ und „Korrektor“ werden entfernt; neue Rollen werden ausschließlich über den Gruppenmanager erstellt.
+`is_superuser=True` ist die einzige Administratorrolle und gewährt uneingeschränkten Zugriff. Die frühere Gruppe **Administrator** wird per Migration in diesen Status überführt und anschließend entfernt. Nur Administratoren verwalten Rechtegruppen. Mitarbeiter mit `can_manage_users` und dem passenden Grant-/Revoke-Recht dürfen gewöhnliche Gruppenmitgliedschaften und Rechte zuweisen; sicherheitskritische Rechte bleiben Administratoren vorbehalten. Die festen Gruppen „Fragen-Editor“, „Test-Manager“ und „Korrektor“ werden entfernt; neue Rollen werden ausschließlich über den Gruppenmanager erstellt.
 
 **Globale Berechtigungen**
 
 | Permission | Zugriff |
 | --- | --- |
 | `core.can_manage_users` | Mitarbeiterkonten verwalten und Mitarbeiter-Rechteformular öffnen |
+| `core.can_delete_users` | Mitarbeiterkonten löschen; benötigt zusätzlich `can_manage_users`. Das eigene Konto und der letzte Administrator sind geschützt; Administratoren können andere Administratoren löschen. Tests bleiben erhalten und verlieren nur die Zuordnung zum gelöschten Ersteller. |
 | `core.can_delete_tests` | Abgegebene Tests löschen, zusätzlich zum Pool-Auswertungsrecht |
 | `core.can_view_audit_logs` | Systemprotokoll einsehen |
 | `core.can_clear_audit_logs` | Alle Audit-Einträge löschen; erfordert zusätzlich `can_view_audit_logs`, der Löschvorgang bleibt selbst protokolliert |
-| `core.can_grant_user_permissions` | Gruppenmitgliedschaften und direkte Nutzerrechte vergeben; zusätzlich ist `can_manage_users` erforderlich |
-| `core.can_revoke_user_permissions` | Gruppenmitgliedschaften und direkte Nutzerrechte entziehen; zusätzlich ist `can_manage_users` erforderlich |
+| `core.can_grant_user_permissions` | Gruppenmitgliedschaften und direkte Nutzerrechte vergeben; zusätzlich ist `can_manage_users` erforderlich. Sicherheitskritische Rechte einschließlich `can_delete_users` bleiben Administratoren vorbehalten. |
+| `core.can_revoke_user_permissions` | Gruppenmitgliedschaften und direkte Nutzerrechte entziehen; zusätzlich ist `can_manage_users` erforderlich. Sicherheitskritische Rechte einschließlich `can_delete_users` bleiben Administratoren vorbehalten. |
 | `core.can_grant_administrator` | Einer anderen Person den Administratorstatus geben; zusätzlich ist `can_manage_users` erforderlich |
 | `core.can_revoke_administrator` | Einer anderen Person den Administratorstatus entziehen; zusätzlich ist `can_manage_users` erforderlich |
 

@@ -11,6 +11,7 @@ POOL_PERMISSION_PREFIXES = {
 }
 GLOBAL_PERMISSION_CODES = {
     "can_manage_users": "core.can_manage_users",
+    "can_delete_users": "core.can_delete_users",
     "can_manage_tool_settings": "core.can_manage_tool_settings",
     "can_delete_tests": "core.can_delete_tests",
     "can_view_audit_logs": "core.can_view_audit_logs",
@@ -22,6 +23,7 @@ GLOBAL_PERMISSION_CODES = {
 }
 DELEGATION_CONTROL_CODES = frozenset({
     "can_clear_audit_logs",
+    "can_delete_users",
     "can_grant_user_permissions",
     "can_revoke_user_permissions",
     "can_grant_administrator",
@@ -98,6 +100,7 @@ def navigation_permissions(request):
     can_manage_users = has_access(user, "can_manage_users")
     return {
         "can_manage_users": can_manage_users,
+        "can_delete_users": has_access(user, "can_delete_users"),
         "can_manage_permissions": is_administrator(user),
         "can_manage_pools": is_administrator(user),
         "can_clear_audit_logs": has_access(user, "can_clear_audit_logs"),

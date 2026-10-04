@@ -21,6 +21,7 @@ urlpatterns = [
     path("admin-dashboard/questions/<int:pk>/delete/", views.question_delete, name="question_delete"),
     path("admin-dashboard/users/", views.users_dashboard, name="users_dashboard"),
     path("admin-dashboard/users/new/", views.user_create, name="user_create"),
+    path("admin-dashboard/users/<int:pk>/delete/", views.user_delete, name="user_delete"),
     path("admin-dashboard/users/<int:pk>/edit/", views.user_edit, name="user_edit"),
     path("admin-dashboard/permissions/", views.permissions_dashboard, name="permissions_dashboard"),
     path("admin-dashboard/permissions/groups/new/", views.permission_group_create, name="permission_group_create"),

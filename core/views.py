@@ -355,6 +355,23 @@ def admin_dashboard(request):
 QUESTION_CSV_FIELDS = (
     "text", "question_type", "points", "answer_key", "is_pinned", "options_json",
 )
+QUESTION_CSV_DELIMITER = ";"
+
+
+def _question_import_key(question):
+    """Identifiziert gleiche Fragen samt Bewertungseinstellungen für den append-only Import."""
+    options = tuple(
+        (option.get("text", "").strip(), option.get("is_correct", False))
+        for option in question.options
+    )
+    return (
+        question.text.strip(),
+        question.question_type,
+        question.points,
+        question.answer_key.strip(),
+        question.is_pinned,
+        options,
+    )
 
 
 @login_required
@@ -368,7 +385,7 @@ def question_export(request, pool_id):
     response = HttpResponse(content_type="text/csv; charset=utf-8")
     response["Content-Disposition"] = f'attachment; filename="questions-pool-{question_pool.pk}.csv"'
     response.write("\ufeff")
-    writer = csv.writer(response)
+    writer = csv.writer(response, delimiter=QUESTION_CSV_DELIMITER, lineterminator="\r\n")
     writer.writerow(QUESTION_CSV_FIELDS)
     for question in Question.objects.filter(question_pool=question_pool).order_by("pk"):
         writer.writerow((
@@ -394,14 +411,29 @@ def question_import(request, pool_id):
     form = QuestionCsvImportForm(request.POST, request.FILES)
     errors = []
     imported_questions = []
+    skipped_duplicates = 0
+    valid_question_count = 0
     if form.is_valid():
         try:
             contents = form.cleaned_data["file"].read().decode("utf-8-sig")
-            reader = csv.DictReader(io.StringIO(contents, newline=""))
+            header_line = contents.splitlines()[0] if contents else ""
+            delimiter = ","
+            for candidate in (QUESTION_CSV_DELIMITER, ","):
+                header = next(csv.reader([header_line], delimiter=candidate), [])
+                if len(header) == len(QUESTION_CSV_FIELDS) and set(header) == set(QUESTION_CSV_FIELDS):
+                    delimiter = candidate
+                    break
+            reader = csv.DictReader(io.StringIO(contents, newline=""), delimiter=delimiter)
             headers = reader.fieldnames or []
             if len(headers) != len(set(headers)) or set(headers) != set(QUESTION_CSV_FIELDS):
                 errors.append("Die CSV-Kopfzeile muss genau diese Spalten enthalten: " + ", ".join(QUESTION_CSV_FIELDS))
             else:
+                existing_question_keys = {
+                    _question_import_key(question)
+                    for question in Question.objects.filter(question_pool=question_pool).only(
+                        "text", "question_type", "points", "answer_key", "is_pinned", "options",
+                    )
+                }
                 for row_number, row in enumerate(reader, start=2):
                     if row_number > 5001:
                         errors.append("Eine CSV-Datei darf höchstens 5.000 Fragen enthalten.")
@@ -457,12 +489,19 @@ def question_import(request, pool_id):
                     ) and options:
                         errors.append(f"Zeile {row_number}: Nur Auswahlfragen dürfen Antwortoptionen enthalten.")
                         continue
-                    imported_questions.append(question_form.save(commit=False))
+                    question = question_form.save(commit=False)
+                    valid_question_count += 1
+                    question_key = _question_import_key(question)
+                    if question_key in existing_question_keys:
+                        skipped_duplicates += 1
+                        continue
+                    existing_question_keys.add(question_key)
+                    imported_questions.append(question)
         except UnicodeDecodeError:
             errors.append("Die CSV-Datei muss UTF-8-kodiert sein.")
         except csv.Error as error:
             errors.append(f"CSV-Lesefehler: {error}")
-        if not errors and not imported_questions:
+        if not errors and not valid_question_count:
             errors.append("Die CSV-Datei enthält keine importierbaren Fragen.")
     if not form.is_valid():
         errors.extend(form.errors.get("file", []))
@@ -486,13 +525,23 @@ def question_import(request, pool_id):
             "csv_import_errors": errors,
         }, status=400)
     with transaction.atomic():
-        Question.objects.bulk_create(imported_questions)
+        if imported_questions:
+            Question.objects.bulk_create(imported_questions)
         record_event(
             request, AuditLog.Category.QUESTION, "question.csv.imported",
-            "Fragen aus einer CSV-Datei in einen Fragenpool importiert.",
-            "question_pool", question_pool.pk, {"count": len(imported_questions)},
+            "CSV-Fragenimport abgeschlossen.",
+            "question_pool", question_pool.pk,
+            {"count": len(imported_questions), "skipped_duplicates": skipped_duplicates},
         )
-    messages.success(request, f"{len(imported_questions)} Fragen wurden ergänzt.")
+    if imported_questions:
+        summary = f"{len(imported_questions)} Fragen wurden ergänzt."
+    else:
+        summary = "Es wurden keine neuen Fragen ergänzt."
+    if skipped_duplicates:
+        duplicate_label = "identisches Duplikat" if skipped_duplicates == 1 else "identische Duplikate"
+        verb = "wurde" if skipped_duplicates == 1 else "wurden"
+        summary += f" {skipped_duplicates} {duplicate_label} {verb} übersprungen."
+    messages.success(request, summary)
     return redirect(f"{reverse('admin_dashboard')}?pool={question_pool.pk}")
 
 
@@ -1032,7 +1081,37 @@ def submission_detail(request, test_id):
 def users_dashboard(request):
     """Listet Mitarbeiterkonten und deren Aktivierungsstatus."""
     users = User.objects.prefetch_related("groups", "user_permissions").order_by("username")
-    return render(request, "core/users.html", {"users": users})
+    return render(request, "core/users.html", {
+        "users": users,
+        "can_delete_admin_users": is_administrator(request.user),
+    })
+
+
+@require_capability("can_manage_users")
+@require_capability("can_delete_users")
+@require_POST
+def user_delete(request, pk):
+    """Löscht ein Mitarbeiterkonto, bewahrt Tests und protokolliert den Vorgang."""
+    user = get_object_or_404(User, pk=pk)
+    if user.pk == request.user.pk:
+        messages.error(request, "Du kannst dein eigenes Konto nicht löschen.")
+        return redirect("users_dashboard")
+    if is_administrator(user) and not is_administrator(request.user):
+        return render(request, "core/403.html", {"capability": "Administrator löschen"}, status=403)
+    if is_administrator(user) and User.objects.filter(is_superuser=True).count() <= 1:
+        messages.error(request, "Der letzte Administrator kann nicht gelöscht werden.")
+        return redirect("users_dashboard")
+    username = user.username
+    user_id = user.pk
+    with transaction.atomic():
+        record_event(
+            request, AuditLog.Category.SECURITY, "staff.deleted",
+            f"Mitarbeiterkonto „{username}“ gelöscht.",
+            "user", user_id, {"username": username},
+        )
+        user.delete()
+    messages.success(request, f"Das Konto „{username}“ wurde gelöscht. Zugehörige Tests bleiben erhalten.")
+    return redirect("users_dashboard")
 
 
 @require_capability("can_manage_users")
@@ -1146,7 +1225,7 @@ def audit_logs_export(request):
     response = HttpResponse(content_type="text/csv; charset=utf-8")
     response["Content-Disposition"] = 'attachment; filename="systemprotokoll.csv"'
     response.write("\ufeff")
-    writer = csv.writer(response)
+    writer = csv.writer(response, delimiter=";", lineterminator="\r\n")
     writer.writerow(("Zeitpunkt", "Benutzer", "Kategorie", "Aktion", "Beschreibung", "Objekttyp", "Objekt-ID", "IP-Adresse", "Browserkennung"))
     for entry in _filtered_audit_logs(request).order_by("-created_at", "-pk").iterator():
         values = (

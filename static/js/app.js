@@ -71,7 +71,7 @@ document.addEventListener('DOMContentLoaded', () => {
         recordCount = 0;
       }
       const countMessage = recordCount ? `Voraussichtlich ${recordCount} Fragen` : 'Keine Datenzeilen erkannt';
-      if (!window.confirm(`${file.name} (${Math.ceil(file.size / 1024)} KB)\n${countMessage}.\nDie Fragen werden ergänzt, bestehende Fragen bleiben unverändert. Import starten?`)) {
+      if (!window.confirm(`${file.name} (${Math.ceil(file.size / 1024)} KB)\n${countMessage}.\nNeue Fragen werden ergänzt. Identische Fragen im selben Pool werden übersprungen; bestehende Fragen bleiben unverändert. Import starten?`)) {
         input.value = '';
         return;
       }
