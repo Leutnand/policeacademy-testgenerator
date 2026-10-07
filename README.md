@@ -6,12 +6,13 @@ Der Police Academy Test Generator ist ein lokales Django-Projekt für die Prüfu
 
 - `testgenerator/`: Django-Einstellungen und ASGI-/WSGI-Einstiegspunkte.
 - `core/models.py`: Fragen, Testläufe, persistierte Testfragen und Abgaben.
-- `core/views.py`: geschützte Mitarbeiteransichten und öffentlicher Prüflingsablauf.
+- `core/views/`: HTTP-Endpunkte, nach Bereichen aufgeteilt (`account`, `rights`, `questions`, `tests_flow`, `users`, `audit`, gemeinsame Helfer in `common`).
+- `core/tests/`: Tests, nach Fachbereichen in mehrere Module aufgeteilt.
 - Tool-Einstellungen: konfigurierbarer Seitentitel, Department-Name, Site-Icon, Logintext, Testgrenzen und Rechtstexte.
 - `core/services.py`: Testauswahl sowie automatische Bewertung.
 - `core/permissions.py`: Zuordnung der Fachrechte zu Djangos Berechtigungssystem.
 - `templates/`: Mitarbeiter-Dashboard, Formulare und prüflingsseitige Seiten.
-- `static/`: responsives CSS und Theme-/Kopieraktionen.
+- `static/`: responsives CSS (aufgeteilt in `app-*.css` und `academy-*.css`, Ladereihenfolge siehe `templates/base.html`) und Theme-/Kopieraktionen.
 
 Die Fragenbank unterstützt Single Choice, Multiple Choice, Kurzantwort und Freitext. Antwortmöglichkeiten werden im Formular als einzelne Zeilen angelegt; das interne JSON-Speicherformat wird nicht von Mitarbeitenden eingegeben. Bei Kurzantworten und Freitext blendet das Formular den Optionsbereich aus. Für Kurzantworten wird die erwartete Antwort zur automatischen Prüfung hinterlegt, für Freitext eine interne Musterlösung zur Korrektur.
 
@@ -137,16 +138,17 @@ Die Oberfläche verwendet lokales CSS; Google Fonts werden optional extern gelad
 Das Image verwendet Python 3.11, Gunicorn und WhiteNoise. SQLite liegt im persistenten Volume `sqlite_data`; die mit `collectstatic` erzeugten Dateien liegen im Volume `static_data`. Beim Start führt der Container zuerst Datenbankmigrationen und `collectstatic` aus und startet danach Gunicorn als unprivilegierter Benutzer.
 
 1. Lege in Portainer unter **Stacks** einen neuen Stack aus diesem Git-Repository an und wähle `docker-compose.yml` als Compose-Datei.
-2. Hinterlege unter den Stack-Umgebungsvariablen `DJANGO_SECRET_KEY` (einen langen zufälligen Wert), `DJANGO_ALLOWED_HOSTS` (deinen Hostnamen, ohne Schema) und `CSRF_TRUSTED_ORIGINS` (zum Beispiel `https://academy.example.org`). Setze außerdem `PORT` bei Bedarf auf den gewünschten Host-Port.
-3. Lass `DJANGO_DEBUG=False`, `DJANGO_SECURE_SSL_REDIRECT=True` und `DJANGO_SECURE_COOKIES=True` für den Produktivbetrieb aktiv. Stelle die Anwendung über einen TLS-Reverse-Proxy bereit, der `X-Forwarded-Proto: https` setzt und überschreibt. Der Container-Port 8000 sollte nicht ungeschützt öffentlich erreichbar sein. Für einen lokalen HTTP-Test können Redirect und Secure-Cookies explizit abgeschaltet werden.
-4. Deploye den Stack. Der Web-Container migriert die Datenbank und sammelt Statikdateien vor dem Start des Webservers.
-5. Lege den ersten Mitarbeiter-Administrator über die Portainer-Containerkonsole oder per Docker-CLI an:
+1. Hinterlege unter den Stack-Umgebungsvariablen `DJANGO_SECRET_KEY` (einen langen zufälligen Wert), `DJANGO_ALLOWED_HOSTS` (deinen Hostnamen, ohne Schema) und `CSRF_TRUSTED_ORIGINS` (zum Beispiel `https://academy.example.org`). Setze außerdem `PORT` bei Bedarf auf den gewünschten Host-Port.
+1. Lass `DJANGO_DEBUG=False`, `DJANGO_SECURE_SSL_REDIRECT=True` und `DJANGO_SECURE_COOKIES=True` für den Produktivbetrieb aktiv. Stelle die Anwendung über einen TLS-Reverse-Proxy bereit, der `X-Forwarded-Proto: https` setzt und überschreibt. Der Container-Port 8000 sollte nicht ungeschützt öffentlich erreichbar sein. Für einen lokalen HTTP-Test können Redirect und Secure-Cookies explizit abgeschaltet werden.
+1. Deploye den Stack. Der Web-Container migriert die Datenbank und sammelt Statikdateien vor dem Start des Webservers.
+1. Lege den ersten Mitarbeiter-Administrator über die Portainer-Containerkonsole oder per Docker-CLI an:
 
-  ```sh
-  docker exec -it police-academy-web python manage.py createsuperuser
-  ```
+```sh
+docker exec -it police-academy-web python manage.py createsuperuser
+```
 
-  Das ist ein Django-Superuser und erhält automatisch Administratorzugriff auf die Academy.
+Das ist ein Django-Superuser und erhält automatisch Administratorzugriff auf die Academy.
 
 Die Volumes bleiben bei Stack-Neuerstellungen erhalten. Sichere insbesondere `sqlite_data` regelmäßig und stoppe den Container vor dem Kopieren der SQLite-Datei. SQLite ist für eine einzelne Containerinstanz und geringe bis mittlere Schreiblast gedacht; für mehrere Web-Instanzen sollte PostgreSQL eingesetzt werden. Zugangsschlüssel gehören in Portainers Stack-Umgebungsvariablen, nicht in die Compose-Datei oder ins Repository.
+
 # testgenerator

@@ -1,78 +1,132 @@
-{% extends 'base.html' %}
-{% block title %}Academy-Test{% endblock %}
-{% block content %}<section class="exam-header"><div class="section-kicker">POLICE ACADEMY / EIGNUNGSTEST</div><h1>Dein Test</h1><p class="muted">Beantworte alle Fragen und sende deine Antworten am Ende ab.</p><div class="exam-progress"><span>{{ questions|length }} Fragen</span>{% if remaining_seconds is not None %}<span class="exam-countdown" role="status" aria-live="polite">Verbleibende Zeit: <strong id="exam-countdown" data-remaining-milliseconds="{{ remaining_milliseconds }}"></strong></span>{% else %}<span>Einmaliger Zugang</span>{% endif %}</div></section>
-<form method="post" class="exam-form" data-exam-form data-test-id="{{ test.pk }}">{% csrf_token %}{% for question in questions %}<fieldset class="exam-question"><legend><span class="question-number">{{ question.position|stringformat:'02d' }}</span><span>{{ question.text }}</span></legend>{% if question.question_type == 'single' %}<div class="answer-options">{% for option in question.options %}<label class="answer-option"><input type="radio" name="question_{{ question.id }}" value="{{ option.index }}"><span class="radio-custom"></span><span>{{ option.text }}</span></label>{% endfor %}</div>{% elif question.question_type == 'multiple' %}<div class="answer-options">{% for option in question.options %}<label class="answer-option"><input type="checkbox" name="question_{{ question.id }}" value="{{ option.index }}"><span class="check-custom"></span><span>{{ option.text }}</span></label>{% endfor %}</div>{% elif question.question_type == 'short' %}<input class="answer-input" name="question_{{ question.id }}" type="text" autocomplete="off" placeholder="Deine Antwort …">{% else %}<textarea class="answer-input long-answer" name="question_{{ question.id }}" rows="5" placeholder="Deine Antwort …"></textarea>{% endif %}</fieldset>{% endfor %}<div class="submit-row"><span class="muted" data-draft-status>Antworten werden in diesem Browser-Tab zwischengespeichert. Nach dem Absenden ist der Zugang verbraucht.</span><button class="button primary" type="submit">Test abgeben <span aria-hidden="true">→</span></button></div></form>
+{% extends "base.html" %} {% block title %}Academy-Test{% endblock %} {% block content %}
+  <section class="exam-header">
+    <div class="section-kicker">POLICE ACADEMY / EIGNUNGSTEST</div>
+    <h1>Dein Test</h1>
+    <p class="muted">Beantworte alle Fragen und sende deine Antworten am Ende ab.</p>
+    <div class="exam-progress">
+      <span>{{ questions|length }} Fragen</span>
+      {% if remaining_seconds != None %}
+        <span class="exam-countdown" role="status" aria-live="polite">Verbleibende Zeit:
+          <strong id="exam-countdown"
+                  data-remaining-milliseconds="{{ remaining_milliseconds }}"></strong></span>{% else %}<span>Einmaliger Zugang</span>{% endif %}
+    </div>
+  </section>
+  <form method="post"
+        class="exam-form"
+        data-exam-form
+        data-test-id="{{ test.pk }}">
+    {% csrf_token %}
+    {% for question in questions %}
+      <fieldset class="exam-question">
+        <legend>
+          <span class="question-number">{{ question.position|stringformat:'02d' }}</span><span>{{ question.text }}</span>
+        </legend>
+        {% if question.question_type == "single" %}
+          <div class="answer-options">
+            {% for option in question.options %}<label class="answer-option"><input type="radio"
+                                                                                    name="question_{{ question.id }}"
+                                                                                    value="{{ option.index }}" /><span class="radio-custom"></span><span>{{ option.text }}</span></label>{% endfor %}
+          </div>
+        {% elif question.question_type == "multiple" %}
+          <div class="answer-options">
+            {% for option in question.options %}<label class="answer-option"><input type="checkbox"
+                                                                                    name="question_{{ question.id }}"
+                                                                                    value="{{ option.index }}" /><span class="check-custom"></span><span>{{ option.text }}</span></label>{% endfor %}
+          </div>
+        {% elif question.question_type == "short" %}
+          <input class="answer-input"
+                 name="question_{{ question.id }}"
+                 type="text"
+                 autocomplete="off"
+                 placeholder="Deine Antwort …" />
+        {% else %}
+          <textarea class="answer-input long-answer"
+                    name="question_{{ question.id }}"
+                    rows="5"
+                    placeholder="Deine Antwort …"></textarea>
+        {% endif %}
+      </fieldset>
+    {% endfor %}
+    <div class="submit-row">
+      <span class="muted" data-draft-status>Antworten werden in diesem Browser-Tab zwischengespeichert. Nach dem
+        Absenden ist der Zugang verbraucht.</span><button class="button primary" type="submit">
+          Test abgeben <span aria-hidden="true">→</span>
+        </button>
+    </div>
+  </form>
 {% endblock %}
-{% block scripts %}<script>
-  (() => {
-    const countdown = document.getElementById("exam-countdown");
-    const form = document.querySelector("[data-exam-form]");
-    const draftKey = `academy-test-draft-${form.dataset.testId}`;
-    const draftStatus = form.querySelector("[data-draft-status]");
-    let hasChanges = false;
-    let submitting = false;
-    const captureAnswers = () => [...form.querySelectorAll("[name^='question_']")].reduce((answers, input) => {
-      if (input.type === "checkbox" || input.type === "radio") {
-        if (input.checked) (answers[input.name] ||= []).push(input.value);
-      } else {
-        answers[input.name] = input.value;
-      }
-      return answers;
-    }, {});
-    const restoreAnswers = () => {
-      try {
-        const answers = JSON.parse(sessionStorage.getItem(draftKey) || "{}");
-        for (const input of form.querySelectorAll("[name^='question_']")) {
-          const value = answers[input.name];
-          if (input.type === "checkbox" || input.type === "radio") {
-            input.checked = Array.isArray(value) && value.includes(input.value);
-          } else if (typeof value === "string") {
-            input.value = value;
-          }
+{% block scripts %}
+  <script>
+    (() => {
+      const countdown = document.getElementById("exam-countdown");
+      const form = document.querySelector("[data-exam-form]");
+      const draftKey = `academy-test-draft-${form.dataset.testId}`;
+      const draftStatus = form.querySelector("[data-draft-status]");
+      let hasChanges = false;
+      let submitting = false;
+      const captureAnswers = () => [...form.querySelectorAll("[name^='question_']")].reduce((answers, input) => {
+        if (input.type === "checkbox" || input.type === "radio") {
+          if (input.checked) (answers[input.name] ||= []).push(input.value);
+        } else {
+          answers[input.name] = input.value;
         }
-        hasChanges = Object.keys(answers).length > 0;
-        if (hasChanges) draftStatus.textContent = "Deine zwischengespeicherten Antworten wurden wiederhergestellt.";
-      } catch (_) {
-        draftStatus.textContent = "Zwischenspeicherung ist in diesem Browser nicht verfügbar.";
-      }
-    };
-    const saveAnswers = () => {
-      try {
-        sessionStorage.setItem(draftKey, JSON.stringify(captureAnswers()));
-        draftStatus.textContent = "Antworten werden in diesem Browser-Tab zwischengespeichert.";
-      } catch (_) {
-        draftStatus.textContent = "Zwischenspeicherung ist in diesem Browser nicht verfügbar.";
-      }
-    };
-    restoreAnswers();
-    form.addEventListener("input", () => { hasChanges = true; saveAnswers(); });
-    form.addEventListener("change", () => { hasChanges = true; saveAnswers(); });
-    form.addEventListener("submit", () => { submitting = true; });
-    window.addEventListener("beforeunload", (event) => {
-      if (!hasChanges || submitting) return;
-      event.preventDefault();
-      event.returnValue = "";
-    });
-  })();
-  {% if remaining_seconds is not None %}
-  (() => {
-    const countdown = document.getElementById("exam-countdown");
-    const form = document.querySelector("[data-exam-form]");
-    const totalMilliseconds = Number(countdown.dataset.remainingMilliseconds);
-    const startedAt = performance.now();
-    const update = () => {
-      const remaining = Math.max(0, totalMilliseconds - (performance.now() - startedAt));
-      const secondsLeft = Math.ceil(remaining / 1000);
-      const minutes = Math.floor(secondsLeft / 60);
-      const seconds = secondsLeft % 60;
-      countdown.textContent = `${minutes}:${String(seconds).padStart(2, "0")}`;
-      if (remaining <= 0) {
-        form.requestSubmit();
-        return;
-      }
-      window.setTimeout(update, Math.min(100, remaining));
-    };
-    update();
-  })();
-  {% endif %}
-</script>{% endblock %}
+        return answers;
+      }, {});
+      const restoreAnswers = () => {
+        try {
+          const answers = JSON.parse(sessionStorage.getItem(draftKey) || "{}");
+          for (const input of form.querySelectorAll("[name^='question_']")) {
+            const value = answers[input.name];
+            if (input.type === "checkbox" || input.type === "radio") {
+              input.checked = Array.isArray(value) && value.includes(input.value);
+            } else if (typeof value === "string") {
+              input.value = value;
+            }
+          }
+          hasChanges = Object.keys(answers).length > 0;
+          if (hasChanges) draftStatus.textContent = "Deine zwischengespeicherten Antworten wurden wiederhergestellt.";
+        } catch (_) {
+          draftStatus.textContent = "Zwischenspeicherung ist in diesem Browser nicht verfügbar.";
+        }
+      };
+      const saveAnswers = () => {
+        try {
+          sessionStorage.setItem(draftKey, JSON.stringify(captureAnswers()));
+          draftStatus.textContent = "Antworten werden in diesem Browser-Tab zwischengespeichert.";
+        } catch (_) {
+          draftStatus.textContent = "Zwischenspeicherung ist in diesem Browser nicht verfügbar.";
+        }
+      };
+      restoreAnswers();
+      form.addEventListener("input", () => { hasChanges = true; saveAnswers(); });
+      form.addEventListener("change", () => { hasChanges = true; saveAnswers(); });
+      form.addEventListener("submit", () => { submitting = true; });
+      window.addEventListener("beforeunload", (event) => {
+        if (!hasChanges || submitting) return;
+        event.preventDefault();
+        event.returnValue = "";
+      });
+    })();
+    {% if remaining_seconds != None %}
+      (() => {
+        const countdown = document.getElementById("exam-countdown");
+        const form = document.querySelector("[data-exam-form]");
+        const totalMilliseconds = Number(countdown.dataset.remainingMilliseconds);
+        const startedAt = performance.now();
+        const update = () => {
+          const remaining = Math.max(0, totalMilliseconds - (performance.now() - startedAt));
+          const secondsLeft = Math.ceil(remaining / 1000);
+          const minutes = Math.floor(secondsLeft / 60);
+          const seconds = secondsLeft % 60;
+          countdown.textContent = `${minutes}:${String(seconds).padStart(2, "0")}`;
+          if (remaining <= 0) {
+            form.requestSubmit();
+            return;
+          }
+          window.setTimeout(update, Math.min(100, remaining));
+        };
+        update();
+      })();
+    {% endif %}
+  </script>
+{% endblock %}

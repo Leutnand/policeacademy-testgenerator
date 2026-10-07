@@ -1,4 +1,5 @@
 """Führt Mitglieder der alten Administratorgruppe in den Superuserstatus über."""
+
 from django.db import migrations
 
 
@@ -22,4 +23,6 @@ class Migration(migrations.Migration):
         ("auth", "0012_alter_user_first_name_max_length"),
     ]
 
-    operations = [migrations.RunPython(migrate_administrator_group, migrations.RunPython.noop)]
+    operations = [
+        migrations.RunPython(migrate_administrator_group, migrations.RunPython.noop)
+    ]

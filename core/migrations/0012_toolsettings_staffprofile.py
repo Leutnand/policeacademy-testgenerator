@@ -9,37 +9,111 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('core', '0011_permission_group_sort_order'),
+        ("core", "0011_permission_group_sort_order"),
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
     ]
 
     operations = [
         migrations.CreateModel(
-            name='ToolSettings',
+            name="ToolSettings",
             fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('site_name', models.CharField(default='Police Academy Test Generator', max_length=120, verbose_name='Seitentitel')),
-                ('department_name', models.CharField(default='San Andreas Police Department', max_length=120, verbose_name='Department-Name')),
-                ('site_icon', models.FileField(blank=True, upload_to='site-icons/', validators=[django.core.validators.FileExtensionValidator(allowed_extensions=['ico', 'png'])], verbose_name='Favicon / Site-Icon')),
-                ('minimum_test_questions', models.PositiveIntegerField(default=1, verbose_name='Minimale Fragenzahl je Test')),
-                ('maximum_test_questions', models.PositiveIntegerField(default=100, verbose_name='Maximale Fragenzahl je Test')),
-                ('login_page_heading', models.TextField(default='Train with\npurpose.\nServe with honor.', verbose_name='Überschrift der Anmeldeseite')),
-                ('login_page_text', models.TextField(default='Prüfungsverwaltung für die Police Academy. Fragen, Testläufe und Bewertungen an einem Ort.', verbose_name='Text der Anmeldeseite')),
-                ('privacy_policy', models.TextField(blank=True, verbose_name='Datenschutzerklärung')),
-                ('imprint', models.TextField(blank=True, verbose_name='Impressum')),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                (
+                    "site_name",
+                    models.CharField(
+                        default="Police Academy Test Generator",
+                        max_length=120,
+                        verbose_name="Seitentitel",
+                    ),
+                ),
+                (
+                    "department_name",
+                    models.CharField(
+                        default="San Andreas Police Department",
+                        max_length=120,
+                        verbose_name="Department-Name",
+                    ),
+                ),
+                (
+                    "site_icon",
+                    models.FileField(
+                        blank=True,
+                        upload_to="site-icons/",
+                        validators=[
+                            django.core.validators.FileExtensionValidator(
+                                allowed_extensions=["ico", "png"]
+                            )
+                        ],
+                        verbose_name="Favicon / Site-Icon",
+                    ),
+                ),
+                (
+                    "minimum_test_questions",
+                    models.PositiveIntegerField(
+                        default=1, verbose_name="Minimale Fragenzahl je Test"
+                    ),
+                ),
+                (
+                    "maximum_test_questions",
+                    models.PositiveIntegerField(
+                        default=100, verbose_name="Maximale Fragenzahl je Test"
+                    ),
+                ),
+                (
+                    "login_page_heading",
+                    models.TextField(
+                        default="Train with\npurpose.\nServe with honor.",
+                        verbose_name="Überschrift der Anmeldeseite",
+                    ),
+                ),
+                (
+                    "login_page_text",
+                    models.TextField(
+                        default="Prüfungsverwaltung für die Police Academy. Fragen, Testläufe und Bewertungen an einem Ort.",
+                        verbose_name="Text der Anmeldeseite",
+                    ),
+                ),
+                (
+                    "privacy_policy",
+                    models.TextField(blank=True, verbose_name="Datenschutzerklärung"),
+                ),
+                ("imprint", models.TextField(blank=True, verbose_name="Impressum")),
             ],
             options={
-                'verbose_name': 'Tool-Einstellungen',
-                'verbose_name_plural': 'Tool-Einstellungen',
+                "verbose_name": "Tool-Einstellungen",
+                "verbose_name_plural": "Tool-Einstellungen",
             },
         ),
         migrations.CreateModel(
-            name='StaffProfile',
+            name="StaffProfile",
             fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('accepted_privacy_hash', models.CharField(blank=True, max_length=64)),
-                ('privacy_accepted_at', models.DateTimeField(blank=True, null=True)),
-                ('user', models.OneToOneField(on_delete=django.db.models.deletion.CASCADE, related_name='staff_profile', to=settings.AUTH_USER_MODEL)),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                ("accepted_privacy_hash", models.CharField(blank=True, max_length=64)),
+                ("privacy_accepted_at", models.DateTimeField(blank=True, null=True)),
+                (
+                    "user",
+                    models.OneToOneField(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        related_name="staff_profile",
+                        to=settings.AUTH_USER_MODEL,
+                    ),
+                ),
             ],
         ),
     ]

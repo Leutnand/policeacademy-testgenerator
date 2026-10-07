@@ -7,13 +7,15 @@ class Migration(migrations.Migration):
     """Speichert den Namen des Prüflings direkt am Testlauf."""
 
     dependencies = [
-        ('core', '0001_initial'),
+        ("core", "0001_initial"),
     ]
 
     operations = [
         migrations.AddField(
-            model_name='testsession',
-            name='examinee_name',
-            field=models.CharField(blank=True, max_length=120, verbose_name='Name des Prüflings'),
+            model_name="testsession",
+            name="examinee_name",
+            field=models.CharField(
+                blank=True, max_length=120, verbose_name="Name des Prüflings"
+            ),
         ),
     ]

@@ -1,3 +1,3 @@
-{% extends 'base.html' %}
+{% extends "base.html" %}
 {% block title %}Testzugang{% endblock %}
 {% block content %}<section class="exam-access"><div class="section-kicker">POLICE ACADEMY / PRÜFUNGSZUGANG</div><span class="access-symbol">01</span><h1>Dein Test wartet.</h1><p class="muted">Gib das sechsstellige Einmalpasswort ein, das du von der Academy erhalten hast.</p><form method="post" class="stack-form access-form">{% csrf_token %}<div class="field-block"><label for="id_otp">{{ form.otp.label }}</label>{{ form.otp }}{% for error in form.otp.errors %}<span class="field-error">{{ error }}</span>{% endfor %}</div><button class="button primary full" type="submit">Zugang bestätigen <span aria-hidden="true">→</span></button></form><p class="privacy-note">Der Zugang kann nur einmal verwendet werden.</p></section>{% endblock %}

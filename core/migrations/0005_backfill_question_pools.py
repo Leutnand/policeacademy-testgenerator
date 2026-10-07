@@ -1,4 +1,5 @@
 """Ordnet vorhandene Fragen und Tests dem initialen Einstellungstest zu."""
+
 from django.db import migrations
 
 
@@ -13,8 +14,12 @@ def assign_default_pool(apps, schema_editor):
         defaults={"description": "Bestehende Fragen und Tests vor der Poolaufteilung."},
     )
     _ = created
-    Question.objects.using(database).filter(question_pool__isnull=True).update(question_pool=pool)
-    TestSession.objects.using(database).filter(question_pool__isnull=True).update(question_pool=pool)
+    Question.objects.using(database).filter(question_pool__isnull=True).update(
+        question_pool=pool
+    )
+    TestSession.objects.using(database).filter(question_pool__isnull=True).update(
+        question_pool=pool
+    )
 
 
 def reverse_default_pool_assignment(apps, schema_editor):
@@ -28,5 +33,8 @@ def reverse_default_pool_assignment(apps, schema_editor):
 
 class Migration(migrations.Migration):
     """Backfill-Migration vor dem Erzwingen der Poolzuordnung."""
+
     dependencies = [("core", "0004_questionpool_question_question_pool_and_more")]
-    operations = [migrations.RunPython(assign_default_pool, reverse_default_pool_assignment)]
+    operations = [
+        migrations.RunPython(assign_default_pool, reverse_default_pool_assignment)
+    ]

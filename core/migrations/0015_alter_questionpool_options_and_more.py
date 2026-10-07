@@ -8,18 +8,38 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('core', '0014_alter_questionpool_options'),
+        ("core", "0014_alter_questionpool_options"),
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
     ]
 
     operations = [
         migrations.AlterModelOptions(
-            name='questionpool',
-            options={'ordering': ['name'], 'permissions': [('can_manage_users', 'Mitarbeiter, Gruppen und Rechte verwalten'), ('can_delete_users', 'Mitarbeiterkonten löschen'), ('can_manage_tool_settings', 'Seiteneinstellungen verwalten'), ('can_delete_tests', 'Abgegebene Tests löschen'), ('can_view_audit_logs', 'Systemprotokoll einsehen'), ('can_clear_audit_logs', 'Systemprotokoll leeren'), ('can_grant_user_permissions', 'Nutzerrechte vergeben'), ('can_revoke_user_permissions', 'Nutzerrechte entziehen'), ('can_grant_administrator', 'Administratorstatus vergeben'), ('can_revoke_administrator', 'Administratorstatus entziehen')]},
+            name="questionpool",
+            options={
+                "ordering": ["name"],
+                "permissions": [
+                    ("can_manage_users", "Mitarbeiter, Gruppen und Rechte verwalten"),
+                    ("can_delete_users", "Mitarbeiterkonten löschen"),
+                    ("can_manage_tool_settings", "Seiteneinstellungen verwalten"),
+                    ("can_delete_tests", "Abgegebene Tests löschen"),
+                    ("can_view_audit_logs", "Systemprotokoll einsehen"),
+                    ("can_clear_audit_logs", "Systemprotokoll leeren"),
+                    ("can_grant_user_permissions", "Nutzerrechte vergeben"),
+                    ("can_revoke_user_permissions", "Nutzerrechte entziehen"),
+                    ("can_grant_administrator", "Administratorstatus vergeben"),
+                    ("can_revoke_administrator", "Administratorstatus entziehen"),
+                ],
+            },
         ),
         migrations.AlterField(
-            model_name='testsession',
-            name='created_by',
-            field=models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='generated_tests', to=settings.AUTH_USER_MODEL),
+            model_name="testsession",
+            name="created_by",
+            field=models.ForeignKey(
+                blank=True,
+                null=True,
+                on_delete=django.db.models.deletion.SET_NULL,
+                related_name="generated_tests",
+                to=settings.AUTH_USER_MODEL,
+            ),
         ),
     ]

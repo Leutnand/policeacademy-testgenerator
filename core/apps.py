@@ -1,9 +1,11 @@
 """Konfiguration der Testgenerator-App."""
+
 from django.apps import AppConfig
 
 
 class CoreConfig(AppConfig):
     """Registriert die App und ihre Signale für die Rolleninitialisierung."""
+
     default_auto_field = "django.db.models.BigAutoField"
     name = "core"
 

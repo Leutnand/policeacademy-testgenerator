@@ -1,4 +1,5 @@
 """Zentrale Autorisierungsregeln für Administratoren, globale Rechte und Poolrechte."""
+
 from .models import QuestionPool
 
 ADMINISTRATOR_GROUP = "Administrator"
@@ -21,14 +22,16 @@ GLOBAL_PERMISSION_CODES = {
     "can_grant_administrator": "core.can_grant_administrator",
     "can_revoke_administrator": "core.can_revoke_administrator",
 }
-DELEGATION_CONTROL_CODES = frozenset({
-    "can_clear_audit_logs",
-    "can_delete_users",
-    "can_grant_user_permissions",
-    "can_revoke_user_permissions",
-    "can_grant_administrator",
-    "can_revoke_administrator",
-})
+DELEGATION_CONTROL_CODES = frozenset(
+    {
+        "can_clear_audit_logs",
+        "can_delete_users",
+        "can_grant_user_permissions",
+        "can_revoke_user_permissions",
+        "can_grant_administrator",
+        "can_revoke_administrator",
+    }
+)
 
 
 def is_administrator(user):

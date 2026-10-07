@@ -9,32 +9,111 @@ class Migration(migrations.Migration):
     """Ergänzt das Audit-Log und erste globale Fachberechtigungen."""
 
     dependencies = [
-        ('core', '0002_testsession_examinee_name'),
+        ("core", "0002_testsession_examinee_name"),
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
     ]
 
     operations = [
         migrations.AlterModelOptions(
-            name='question',
-            options={'ordering': ['-is_pinned', '-updated_at'], 'permissions': [('can_manage_questions', 'Fragenpool einsehen und verwalten'), ('can_generate_tests', 'Tests und Einmalpasswörter generieren'), ('can_view_submissions', 'Testergebnisse und Abgaben einsehen'), ('can_grade_submissions', 'Freitextantworten bewerten'), ('can_manage_users', 'Mitarbeiter und Rechte verwalten'), ('can_delete_tests', 'Abgegebene Tests löschen'), ('can_view_audit_logs', 'Systemprotokoll einsehen')]},
+            name="question",
+            options={
+                "ordering": ["-is_pinned", "-updated_at"],
+                "permissions": [
+                    ("can_manage_questions", "Fragenpool einsehen und verwalten"),
+                    ("can_generate_tests", "Tests und Einmalpasswörter generieren"),
+                    ("can_view_submissions", "Testergebnisse und Abgaben einsehen"),
+                    ("can_grade_submissions", "Freitextantworten bewerten"),
+                    ("can_manage_users", "Mitarbeiter und Rechte verwalten"),
+                    ("can_delete_tests", "Abgegebene Tests löschen"),
+                    ("can_view_audit_logs", "Systemprotokoll einsehen"),
+                ],
+            },
         ),
         migrations.CreateModel(
-            name='AuditLog',
+            name="AuditLog",
             fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('created_at', models.DateTimeField(auto_now_add=True, db_index=True, verbose_name='Zeitpunkt')),
-                ('category', models.CharField(choices=[('request', 'Zugriff'), ('auth', 'Anmeldung'), ('question', 'Fragenbank'), ('test', 'Testlauf'), ('submission', 'Abgabe/Korrektur'), ('staff', 'Mitarbeiter/Rechte'), ('security', 'Sicherheit')], db_index=True, max_length=16, verbose_name='Bereich')),
-                ('action', models.CharField(db_index=True, max_length=80, verbose_name='Aktion')),
-                ('description', models.TextField(verbose_name='Beschreibung')),
-                ('object_type', models.CharField(blank=True, max_length=80, verbose_name='Objekttyp')),
-                ('object_id', models.CharField(blank=True, max_length=100, verbose_name='Objekt-ID')),
-                ('ip_address', models.GenericIPAddressField(blank=True, null=True, verbose_name='IP-Adresse')),
-                ('user_agent', models.CharField(blank=True, max_length=512, verbose_name='Browserkennung')),
-                ('metadata', models.JSONField(blank=True, default=dict, verbose_name='Zusatzinformationen')),
-                ('actor', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='audit_events', to=settings.AUTH_USER_MODEL)),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                (
+                    "created_at",
+                    models.DateTimeField(
+                        auto_now_add=True, db_index=True, verbose_name="Zeitpunkt"
+                    ),
+                ),
+                (
+                    "category",
+                    models.CharField(
+                        choices=[
+                            ("request", "Zugriff"),
+                            ("auth", "Anmeldung"),
+                            ("question", "Fragenbank"),
+                            ("test", "Testlauf"),
+                            ("submission", "Abgabe/Korrektur"),
+                            ("staff", "Mitarbeiter/Rechte"),
+                            ("security", "Sicherheit"),
+                        ],
+                        db_index=True,
+                        max_length=16,
+                        verbose_name="Bereich",
+                    ),
+                ),
+                (
+                    "action",
+                    models.CharField(
+                        db_index=True, max_length=80, verbose_name="Aktion"
+                    ),
+                ),
+                ("description", models.TextField(verbose_name="Beschreibung")),
+                (
+                    "object_type",
+                    models.CharField(
+                        blank=True, max_length=80, verbose_name="Objekttyp"
+                    ),
+                ),
+                (
+                    "object_id",
+                    models.CharField(
+                        blank=True, max_length=100, verbose_name="Objekt-ID"
+                    ),
+                ),
+                (
+                    "ip_address",
+                    models.GenericIPAddressField(
+                        blank=True, null=True, verbose_name="IP-Adresse"
+                    ),
+                ),
+                (
+                    "user_agent",
+                    models.CharField(
+                        blank=True, max_length=512, verbose_name="Browserkennung"
+                    ),
+                ),
+                (
+                    "metadata",
+                    models.JSONField(
+                        blank=True, default=dict, verbose_name="Zusatzinformationen"
+                    ),
+                ),
+                (
+                    "actor",
+                    models.ForeignKey(
+                        blank=True,
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="audit_events",
+                        to=settings.AUTH_USER_MODEL,
+                    ),
+                ),
             ],
             options={
-                'ordering': ['-created_at', '-pk'],
+                "ordering": ["-created_at", "-pk"],
             },
         ),
     ]

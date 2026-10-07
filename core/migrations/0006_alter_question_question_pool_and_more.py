@@ -8,18 +8,28 @@ class Migration(migrations.Migration):
     """Schützt verwendete Fragenpools vor versehentlicher Löschung."""
 
     dependencies = [
-        ('core', '0005_backfill_question_pools'),
+        ("core", "0005_backfill_question_pools"),
     ]
 
     operations = [
         migrations.AlterField(
-            model_name='question',
-            name='question_pool',
-            field=models.ForeignKey(on_delete=django.db.models.deletion.PROTECT, related_name='questions', to='core.questionpool', verbose_name='Fragenpool'),
+            model_name="question",
+            name="question_pool",
+            field=models.ForeignKey(
+                on_delete=django.db.models.deletion.PROTECT,
+                related_name="questions",
+                to="core.questionpool",
+                verbose_name="Fragenpool",
+            ),
         ),
         migrations.AlterField(
-            model_name='testsession',
-            name='question_pool',
-            field=models.ForeignKey(on_delete=django.db.models.deletion.PROTECT, related_name='test_sessions', to='core.questionpool', verbose_name='Prüfungstyp / Fragenpool'),
+            model_name="testsession",
+            name="question_pool",
+            field=models.ForeignKey(
+                on_delete=django.db.models.deletion.PROTECT,
+                related_name="test_sessions",
+                to="core.questionpool",
+                verbose_name="Prüfungstyp / Fragenpool",
+            ),
         ),
     ]

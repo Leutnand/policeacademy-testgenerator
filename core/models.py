@@ -1,4 +1,5 @@
 """Datenmodelle für Fragen, Tests und deren Abgaben."""
+
 import uuid
 from django.conf import settings
 from django.contrib.auth.models import Group
@@ -8,12 +9,14 @@ from django.core.validators import FileExtensionValidator
 
 class QuestionPool(models.Model):
     """Benannter Fragenbestand für einen eigenständigen Prüfungstyp."""
+
     name = models.CharField("Name des Fragenpools", max_length=120, unique=True)
     description = models.TextField("Beschreibung", blank=True)
     created_at = models.DateTimeField("Erstellt am", auto_now_add=True)
 
     class Meta:
         """Sortiert Pools stabil und definiert die verbliebenen globalen Rechte."""
+
         ordering = ["name"]
         permissions = [
             ("can_manage_users", "Mitarbeiter, Gruppen und Rechte verwalten"),
@@ -35,14 +38,18 @@ class QuestionPool(models.Model):
 
 class PermissionGroupSortOrder(models.Model):
     """Speichert die manuell festgelegte Reihenfolge einer Rechtegruppe."""
+
     group = models.OneToOneField(
-        Group, on_delete=models.CASCADE, related_name="sort_config",
+        Group,
+        on_delete=models.CASCADE,
+        related_name="sort_config",
         verbose_name="Rechtegruppe",
     )
     sort_order = models.PositiveIntegerField("Sortierzahl", default=1)
 
     class Meta:
         """Zeigt gleiche Sortierzahlen stabil nach Gruppennamen an."""
+
         ordering = ["sort_order", "group__name"]
 
     def __str__(self):
@@ -52,14 +59,25 @@ class PermissionGroupSortOrder(models.Model):
 
 class ToolSettings(models.Model):
     """Konfiguration der sichtbaren Marke, Rechtstexte und Testgrenzen."""
-    site_name = models.CharField("Seitentitel", max_length=120, default="Police Academy Test Generator")
-    department_name = models.CharField("Department-Name", max_length=120, default="San Andreas Police Department")
+
+    site_name = models.CharField(
+        "Seitentitel", max_length=120, default="Police Academy Test Generator"
+    )
+    department_name = models.CharField(
+        "Department-Name", max_length=120, default="San Andreas Police Department"
+    )
     site_icon = models.FileField(
-        "Favicon / Site-Icon", upload_to="site-icons/", blank=True,
+        "Favicon / Site-Icon",
+        upload_to="site-icons/",
+        blank=True,
         validators=[FileExtensionValidator(allowed_extensions=["ico", "png"])],
     )
-    minimum_test_questions = models.PositiveIntegerField("Minimale Fragenzahl je Test", default=1)
-    maximum_test_questions = models.PositiveIntegerField("Maximale Fragenzahl je Test", default=100)
+    minimum_test_questions = models.PositiveIntegerField(
+        "Minimale Fragenzahl je Test", default=1
+    )
+    maximum_test_questions = models.PositiveIntegerField(
+        "Maximale Fragenzahl je Test", default=100
+    )
     login_page_heading = models.TextField(
         "Überschrift der Anmeldeseite",
         default="Train with\npurpose.\nServe with honor.",
@@ -73,6 +91,7 @@ class ToolSettings(models.Model):
 
     class Meta:
         """Stellt den Datensatz als zentrale Toolkonfiguration dar."""
+
         verbose_name = "Tool-Einstellungen"
         verbose_name_plural = "Tool-Einstellungen"
 
@@ -84,8 +103,11 @@ class ToolSettings(models.Model):
 
 class StaffProfile(models.Model):
     """Speichert die Datenschutzbestätigung je Mitarbeiterkonto."""
+
     user = models.OneToOneField(
-        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="staff_profile",
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="staff_profile",
     )
     accepted_privacy_hash = models.CharField(max_length=64, blank=True)
     privacy_accepted_at = models.DateTimeField(null=True, blank=True)
@@ -93,8 +115,10 @@ class StaffProfile(models.Model):
 
 class Question(models.Model):
     """Frage im Fragenpool; Lösungen sind ausschließlich intern verfügbar."""
+
     class Type(models.TextChoices):
         """Verfügbare Typen bestimmen Darstellung und automatische Bewertung."""
+
         SINGLE = "single", "Single Choice"
         MULTIPLE = "multiple", "Multiple Choice"
         SHORT = "short", "Kurzantwort"
@@ -102,8 +126,10 @@ class Question(models.Model):
 
     text = models.TextField("Fragetext")
     question_pool = models.ForeignKey(
-        QuestionPool, on_delete=models.PROTECT,
-        related_name="questions", verbose_name="Fragenpool",
+        QuestionPool,
+        on_delete=models.PROTECT,
+        related_name="questions",
+        verbose_name="Fragenpool",
     )
     question_type = models.CharField("Fragetyp", max_length=12, choices=Type.choices)
     options = models.JSONField("Antwortoptionen", default=list, blank=True)
@@ -115,6 +141,7 @@ class Question(models.Model):
 
     class Meta:
         """Sortiert Fragen; poolbezogene Rechte werden dynamisch am Pool erzeugt."""
+
         ordering = ["-is_pinned", "-updated_at"]
 
     def __str__(self):
@@ -124,28 +151,46 @@ class Question(models.Model):
 
 class TestSession(models.Model):
     """Erzeugter Test mit UUID und sicher gehashtem Einmalpasswort."""
+
     class Status(models.TextChoices):
         """Kennzeichnet einen noch nutzbaren oder bereits verbrauchten Zugang."""
+
         ISSUED = "issued", "Ausgestellt"
         COMPLETED = "completed", "Abgeschlossen"
 
-    id = models.UUIDField("Test-UUID", primary_key=True, default=uuid.uuid4, editable=False)
+    id = models.UUIDField(
+        "Test-UUID", primary_key=True, default=uuid.uuid4, editable=False
+    )
     question_pool = models.ForeignKey(
-        QuestionPool, on_delete=models.PROTECT,
-        related_name="test_sessions", verbose_name="Prüfungstyp / Fragenpool",
+        QuestionPool,
+        on_delete=models.PROTECT,
+        related_name="test_sessions",
+        verbose_name="Prüfungstyp / Fragenpool",
     )
     otp_hash = models.CharField("OTP-Hash", max_length=256)
     examinee_name = models.CharField("Name des Prüflings", max_length=120, blank=True)
-    status = models.CharField("Status", max_length=12, choices=Status.choices, default=Status.ISSUED)
+    status = models.CharField(
+        "Status", max_length=12, choices=Status.choices, default=Status.ISSUED
+    )
     created_by = models.ForeignKey(
-        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
         related_name="generated_tests",
     )
     created_at = models.DateTimeField("Erstellt am", auto_now_add=True)
-    time_limit_minutes = models.PositiveIntegerField("Zeitlimit in Minuten", null=True, blank=True)
+    time_limit_minutes = models.PositiveIntegerField(
+        "Zeitlimit in Minuten", null=True, blank=True
+    )
+    otp_verified_at = models.DateTimeField(
+        "Einmalpasswort bestätigt am", null=True, blank=True
+    )
     started_at = models.DateTimeField("Gestartet am", null=True, blank=True)
     completed_at = models.DateTimeField("Abgeschlossen am", null=True, blank=True)
-    elapsed_seconds = models.PositiveIntegerField("Bearbeitungszeit in Sekunden", null=True, blank=True)
+    elapsed_seconds = models.PositiveIntegerField(
+        "Bearbeitungszeit in Sekunden", null=True, blank=True
+    )
 
     @property
     def time_taken_display(self):
@@ -165,19 +210,33 @@ class TestSession(models.Model):
 
 class TestQuestion(models.Model):
     """Fragenschnappschuss hält einen erzeugten Test unverändert."""
-    test = models.ForeignKey(TestSession, on_delete=models.CASCADE, related_name="items")
-    source_question = models.ForeignKey(Question, on_delete=models.SET_NULL, null=True, blank=True)
+
+    test = models.ForeignKey(
+        TestSession, on_delete=models.CASCADE, related_name="items"
+    )
+    source_question = models.ForeignKey(
+        Question, on_delete=models.SET_NULL, null=True, blank=True
+    )
     position = models.PositiveIntegerField("Position")
     text = models.TextField("Fragetext")
-    question_type = models.CharField("Fragetyp", max_length=12, choices=Question.Type.choices)
-    options = models.JSONField("Optionen und interne Lösungsschlüssel", default=list, blank=True)
+    question_type = models.CharField(
+        "Fragetyp", max_length=12, choices=Question.Type.choices
+    )
+    options = models.JSONField(
+        "Optionen und interne Lösungsschlüssel", default=list, blank=True
+    )
     points = models.DecimalField("Punkte", max_digits=7, decimal_places=2)
     answer_key = models.TextField("Musterlösung", blank=True)
 
     class Meta:
         """Sichert Testreihenfolge und eine eindeutige Positionsnummer."""
+
         ordering = ["position"]
-        constraints = [models.UniqueConstraint(fields=["test", "position"], name="unique_test_question_position")]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["test", "position"], name="unique_test_question_position"
+            )
+        ]
 
     def __str__(self):
         """Liefert eine verständliche Bezeichnung für den Admin."""
@@ -186,17 +245,38 @@ class TestQuestion(models.Model):
 
 class Submission(models.Model):
     """Antwort auf eine Testfrage einschließlich Bewertungsmetadaten."""
-    test = models.ForeignKey(TestSession, on_delete=models.CASCADE, related_name="submissions")
-    test_question = models.ForeignKey(TestQuestion, on_delete=models.CASCADE, related_name="submissions")
+
+    test = models.ForeignKey(
+        TestSession, on_delete=models.CASCADE, related_name="submissions"
+    )
+    test_question = models.ForeignKey(
+        TestQuestion, on_delete=models.CASCADE, related_name="submissions"
+    )
     answer = models.JSONField("Antwort", default=dict, blank=True)
-    score = models.DecimalField("Erreichte Punkte", max_digits=7, decimal_places=2, null=True, blank=True)
-    needs_manual_grading = models.BooleanField("Manuelle Korrektur erforderlich", default=False)
-    graded_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name="graded_submissions")
+    score = models.DecimalField(
+        "Erreichte Punkte", max_digits=7, decimal_places=2, null=True, blank=True
+    )
+    needs_manual_grading = models.BooleanField(
+        "Manuelle Korrektur erforderlich", default=False
+    )
+    graded_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="graded_submissions",
+    )
     graded_at = models.DateTimeField("Bewertet am", null=True, blank=True)
 
     class Meta:
         """Verhindert doppelte Antworten zur selben Testfrage."""
-        constraints = [models.UniqueConstraint(fields=["test", "test_question"], name="unique_submission_per_test_question")]
+
+        constraints = [
+            models.UniqueConstraint(
+                fields=["test", "test_question"],
+                name="unique_submission_per_test_question",
+            )
+        ]
 
     def __str__(self):
         """Liefert eine knappe Korrekturansicht-Bezeichnung."""
@@ -211,8 +291,10 @@ class Submission(models.Model):
 
 class AuditLog(models.Model):
     """Unveränderlicher Prüfpfad für HTTP-Zugriffe und fachliche Änderungen."""
+
     class Category(models.TextChoices):
         """Gruppiert Einträge für die geschützte Logansicht."""
+
         REQUEST = "request", "Zugriff"
         AUTH = "auth", "Anmeldung"
         QUESTION = "question", "Fragenbank"
@@ -222,8 +304,16 @@ class AuditLog(models.Model):
         SECURITY = "security", "Sicherheit"
 
     created_at = models.DateTimeField("Zeitpunkt", auto_now_add=True, db_index=True)
-    actor = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name="audit_events")
-    category = models.CharField("Bereich", max_length=16, choices=Category.choices, db_index=True)
+    actor = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="audit_events",
+    )
+    category = models.CharField(
+        "Bereich", max_length=16, choices=Category.choices, db_index=True
+    )
     action = models.CharField("Aktion", max_length=80, db_index=True)
     description = models.TextField("Beschreibung")
     object_type = models.CharField("Objekttyp", max_length=80, blank=True)
@@ -234,6 +324,7 @@ class AuditLog(models.Model):
 
     class Meta:
         """Ordnet Protokolle chronologisch neueste zuerst."""
+
         ordering = ["-created_at", "-pk"]
 
     def __str__(self):

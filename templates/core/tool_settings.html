@@ -1,23 +1,37 @@
-{% extends 'base.html' %}
+{% extends "base.html" %}
 {% block title %}Tool-Einstellungen{% endblock %}
 {% block content %}
-<div class="page-heading">
-  <div><div class="section-kicker">POLICE ACADEMY / SYSTEM</div><h1>Tool-Einstellungen</h1><p class="muted">Passe Namen, Anmeldeseite, Prüfungsgrenzen und Rechtstexte an.</p></div>
-</div>
-<form method="post" enctype="multipart/form-data" class="form-sheet tool-settings-form">
-  {% csrf_token %}
-  {% for field in form %}
-  {% if field.name == 'site_name' %}<div class="section-kicker">ERSCHEINUNGSBILD</div>{% elif field.name == 'minimum_test_questions' %}<div class="section-kicker">PRÜFUNGSREGELN</div>{% elif field.name == 'login_page_heading' %}<div class="section-kicker">ANMELDESEITE</div>{% elif field.name == 'privacy_policy' %}<div class="section-kicker">RECHTSTEXTE</div>{% endif %}
-  <div class="field-block">
-    <label for="{{ field.id_for_label }}">{{ field.label }}</label>
-    {{ field }}
-    {% if field.help_text %}<small>{{ field.help_text }}</small>{% endif %}
-    {% if field.name == 'site_icon' %}<small>ICO oder PNG, maximal 1 MB.</small>{% endif %}
-    {% for error in field.errors %}<span class="field-error">{{ error }}</span>{% endfor %}
+  <div class="page-heading">
+    <div>
+      <div class="section-kicker">POLICE ACADEMY / SYSTEM</div>
+      <h1>Tool-Einstellungen</h1>
+      <p class="muted">Passe Namen, Anmeldeseite, Prüfungsgrenzen und Rechtstexte an.</p>
+    </div>
   </div>
-  {% endfor %}
-  <section class="login-preview" aria-live="polite"><div class="section-kicker">VORSCHAU ANMELDESEITE</div><p class="eyebrow" data-preview-department></p><h2 data-preview-heading></h2><p data-preview-text></p><small><strong data-preview-footer-department></strong> · <span data-preview-footer-site></span></small></section>
-  {% for error in form.non_field_errors %}<span class="field-error">{{ error }}</span>{% endfor %}
-  <div class="form-actions"><button class="button primary" type="submit">Einstellungen speichern</button></div>
-</form>
+  <form method="post"
+        enctype="multipart/form-data"
+        class="form-sheet tool-settings-form">
+    {% csrf_token %}
+    {% for field in form %}
+      {% if field.name == "site_name" %}<div class="section-kicker">ERSCHEINUNGSBILD</div>{% elif field.name == "minimum_test_questions" %}<div class="section-kicker">PRÜFUNGSREGELN</div>{% elif field.name == "login_page_heading" %}<div class="section-kicker">ANMELDESEITE</div>{% elif field.name == "privacy_policy" %}<div class="section-kicker">RECHTSTEXTE</div>{% endif %}
+      <div class="field-block">
+        <label for="{{ field.id_for_label }}">{{ field.label }}</label>
+        {{ field }}
+        {% if field.help_text %}<small>{{ field.help_text }}</small>{% endif %}
+        {% if field.name == "site_icon" %}<small>ICO oder PNG, maximal 1 MB.</small>{% endif %}
+        {% for error in field.errors %}<span class="field-error">{{ error }}</span>{% endfor %}
+      </div>
+    {% endfor %}
+    <section class="login-preview" aria-live="polite">
+      <div class="section-kicker">VORSCHAU ANMELDESEITE</div>
+      <p class="eyebrow" data-preview-department></p>
+      <h2 data-preview-heading></h2>
+      <p data-preview-text></p>
+      <small><strong data-preview-footer-department></strong> · <span data-preview-footer-site></span></small>
+    </section>
+    {% for error in form.non_field_errors %}<span class="field-error">{{ error }}</span>{% endfor %}
+    <div class="form-actions">
+      <button class="button primary" type="submit">Einstellungen speichern</button>
+    </div>
+  </form>
 {% endblock %}

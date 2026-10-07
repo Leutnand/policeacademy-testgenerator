@@ -1,0 +1,1 @@
+"""Testpaket der Academy-Anwendung."""

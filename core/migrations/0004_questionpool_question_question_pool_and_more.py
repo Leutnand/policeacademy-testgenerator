@@ -8,30 +8,61 @@ class Migration(migrations.Migration):
     """Führt benannte Fragenpools und die Poolzuordnung ein."""
 
     dependencies = [
-        ('core', '0003_alter_question_options_auditlog'),
+        ("core", "0003_alter_question_options_auditlog"),
     ]
 
     operations = [
         migrations.CreateModel(
-            name='QuestionPool',
+            name="QuestionPool",
             fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('name', models.CharField(max_length=120, unique=True, verbose_name='Name des Fragenpools')),
-                ('description', models.TextField(blank=True, verbose_name='Beschreibung')),
-                ('created_at', models.DateTimeField(auto_now_add=True, verbose_name='Erstellt am')),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                (
+                    "name",
+                    models.CharField(
+                        max_length=120, unique=True, verbose_name="Name des Fragenpools"
+                    ),
+                ),
+                (
+                    "description",
+                    models.TextField(blank=True, verbose_name="Beschreibung"),
+                ),
+                (
+                    "created_at",
+                    models.DateTimeField(auto_now_add=True, verbose_name="Erstellt am"),
+                ),
             ],
             options={
-                'ordering': ['name'],
+                "ordering": ["name"],
             },
         ),
         migrations.AddField(
-            model_name='question',
-            name='question_pool',
-            field=models.ForeignKey(null=True, on_delete=django.db.models.deletion.PROTECT, related_name='questions', to='core.questionpool', verbose_name='Fragenpool'),
+            model_name="question",
+            name="question_pool",
+            field=models.ForeignKey(
+                null=True,
+                on_delete=django.db.models.deletion.PROTECT,
+                related_name="questions",
+                to="core.questionpool",
+                verbose_name="Fragenpool",
+            ),
         ),
         migrations.AddField(
-            model_name='testsession',
-            name='question_pool',
-            field=models.ForeignKey(null=True, on_delete=django.db.models.deletion.PROTECT, related_name='test_sessions', to='core.questionpool', verbose_name='Prüfungstyp / Fragenpool'),
+            model_name="testsession",
+            name="question_pool",
+            field=models.ForeignKey(
+                null=True,
+                on_delete=django.db.models.deletion.PROTECT,
+                related_name="test_sessions",
+                to="core.questionpool",
+                verbose_name="Prüfungstyp / Fragenpool",
+            ),
         ),
     ]

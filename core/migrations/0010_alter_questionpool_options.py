@@ -7,12 +7,24 @@ class Migration(migrations.Migration):
     """Ergänzt delegierbare Rechte für Audit-Logs, Nutzer und Administratoren."""
 
     dependencies = [
-        ('core', '0009_single_administrator_role'),
+        ("core", "0009_single_administrator_role"),
     ]
 
     operations = [
         migrations.AlterModelOptions(
-            name='questionpool',
-            options={'ordering': ['name'], 'permissions': [('can_manage_users', 'Mitarbeiter, Gruppen und Rechte verwalten'), ('can_delete_tests', 'Abgegebene Tests löschen'), ('can_view_audit_logs', 'Systemprotokoll einsehen'), ('can_clear_audit_logs', 'Systemprotokoll leeren'), ('can_grant_user_permissions', 'Nutzerrechte vergeben'), ('can_revoke_user_permissions', 'Nutzerrechte entziehen'), ('can_grant_administrator', 'Administratorstatus vergeben'), ('can_revoke_administrator', 'Administratorstatus entziehen')]},
+            name="questionpool",
+            options={
+                "ordering": ["name"],
+                "permissions": [
+                    ("can_manage_users", "Mitarbeiter, Gruppen und Rechte verwalten"),
+                    ("can_delete_tests", "Abgegebene Tests löschen"),
+                    ("can_view_audit_logs", "Systemprotokoll einsehen"),
+                    ("can_clear_audit_logs", "Systemprotokoll leeren"),
+                    ("can_grant_user_permissions", "Nutzerrechte vergeben"),
+                    ("can_revoke_user_permissions", "Nutzerrechte entziehen"),
+                    ("can_grant_administrator", "Administratorstatus vergeben"),
+                    ("can_revoke_administrator", "Administratorstatus entziehen"),
+                ],
+            },
         ),
     ]

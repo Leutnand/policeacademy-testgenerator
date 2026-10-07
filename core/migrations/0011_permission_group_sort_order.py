@@ -7,11 +7,15 @@ def initialize_group_order(apps, schema_editor):
     Group = apps.get_model("auth", "Group")
     PermissionGroupSortOrder = apps.get_model("core", "PermissionGroupSortOrder")
     database = schema_editor.connection.alias
-    groups = Group.objects.using(database).exclude(name="Administrator").order_by("name")
-    PermissionGroupSortOrder.objects.using(database).bulk_create([
-        PermissionGroupSortOrder(group_id=group.pk, sort_order=index)
-        for index, group in enumerate(groups, start=1)
-    ])
+    groups = (
+        Group.objects.using(database).exclude(name="Administrator").order_by("name")
+    )
+    PermissionGroupSortOrder.objects.using(database).bulk_create(
+        [
+            PermissionGroupSortOrder(group_id=group.pk, sort_order=index)
+            for index, group in enumerate(groups, start=1)
+        ]
+    )
 
 
 class Migration(migrations.Migration):
@@ -24,14 +28,28 @@ class Migration(migrations.Migration):
         migrations.CreateModel(
             name="PermissionGroupSortOrder",
             fields=[
-                ("id", models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name="ID")),
-                ("sort_order", models.PositiveIntegerField(default=1, verbose_name="Sortierzahl")),
-                ("group", models.OneToOneField(
-                    on_delete=django.db.models.deletion.CASCADE,
-                    related_name="sort_config",
-                    to="auth.group",
-                    verbose_name="Rechtegruppe",
-                )),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                (
+                    "sort_order",
+                    models.PositiveIntegerField(default=1, verbose_name="Sortierzahl"),
+                ),
+                (
+                    "group",
+                    models.OneToOneField(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        related_name="sort_config",
+                        to="auth.group",
+                        verbose_name="Rechtegruppe",
+                    ),
+                ),
             ],
             options={"ordering": ["sort_order", "group__name"]},
         ),

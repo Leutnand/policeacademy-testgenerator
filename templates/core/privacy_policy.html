@@ -1,8 +1,14 @@
-{% extends 'base.html' %}
+{% extends "base.html" %}
 {% block title %}Impressum / DSGVO{% endblock %}
 {% block content %}
-<div class="page-heading"><div><div class="section-kicker">{{ tool_settings.department_name|upper }}</div><h1>Impressum / DSGVO</h1><p class="muted">Rechtliche Informationen zum {{ tool_settings.site_name }}.</p></div></div>
-<section class="legal-document" id="impressum"><h2>Impressum</h2>{% if tool_settings.imprint %}{{ tool_settings.imprint|linebreaks }}{% else %}<p class="muted">Das Impressum wurde noch nicht hinterlegt. Eine Administration kann die Angaben in den Tool-Einstellungen ergänzen.</p>{% endif %}</section>
-<section class="legal-document" id="datenschutz"><h2>Datenschutzerklärung</h2>{% if tool_settings.privacy_policy %}{{ tool_settings.privacy_policy|linebreaks }}{% else %}<p class="muted">Die Datenschutzerklärung wurde noch nicht hinterlegt.</p>{% endif %}</section>
-{% if user.is_authenticated %}<div class="form-actions"><a class="button quiet" href="{% url 'privacy_accept' %}">Zur Bestätigung der Datenschutzerklärung</a></div>{% endif %}
+  <div class="page-heading">
+    <div>
+      <div class="section-kicker">{{ tool_settings.department_name|upper }}</div>
+      <h1>Impressum / DSGVO</h1>
+      <p class="muted">Rechtliche Informationen zum {{ tool_settings.site_name }}.</p>
+    </div>
+  </div>
+  <section class="legal-document" id="impressum"><h2>Impressum</h2>{% if tool_settings.imprint %}{{ tool_settings.imprint|linebreaks }}{% else %}<p class="muted">Das Impressum wurde noch nicht hinterlegt. Eine Administration kann die Angaben in den Tool-Einstellungen ergänzen.</p>{% endif %}</section>
+  <section class="legal-document" id="datenschutz"><h2>Datenschutzerklärung</h2>{% if tool_settings.privacy_policy %}{{ tool_settings.privacy_policy|linebreaks }}{% else %}<p class="muted">Die Datenschutzerklärung wurde noch nicht hinterlegt.</p>{% endif %}</section>
+  {% if user.is_authenticated %}<div class="form-actions"><a class="button quiet" href="{% url 'privacy_accept' %}">Zur Bestätigung der Datenschutzerklärung</a></div>{% endif %}
 {% endblock %}

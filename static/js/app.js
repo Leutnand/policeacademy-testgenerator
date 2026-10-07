@@ -5,7 +5,11 @@ document.addEventListener('DOMContentLoaded', () => {
   const icon = document.querySelector('#theme-icon');
   const setTheme = (theme) => {
     root.dataset.theme = theme;
-    try { localStorage.setItem('police-academy-theme', theme); } catch (_) { /* Speicher kann im privaten Modus gesperrt sein. */ }
+    try {
+      localStorage.setItem('police-academy-theme', theme);
+    } catch (_) {
+      /* Speicher kann im privaten Modus gesperrt sein. */
+    }
     if (icon) icon.textContent = theme === 'dark' ? '☼' : '◐';
   };
   setTheme(root.dataset.theme || 'light');
@@ -22,7 +26,9 @@ document.addEventListener('DOMContentLoaded', () => {
         await navigator.clipboard.writeText(target);
         const previous = button.textContent;
         button.textContent = 'Kopiert';
-        window.setTimeout(() => { button.textContent = previous; }, 1500);
+        window.setTimeout(() => {
+          button.textContent = previous;
+        }, 1500);
       } catch (_) {
         const temporaryInput = document.createElement('textarea');
         temporaryInput.value = target;
@@ -35,7 +41,9 @@ document.addEventListener('DOMContentLoaded', () => {
         temporaryInput.remove();
         const previous = button.textContent;
         button.textContent = copied ? 'Kopiert' : 'Kopieren fehlgeschlagen';
-        window.setTimeout(() => { button.textContent = previous; }, 2000);
+        window.setTimeout(() => {
+          button.textContent = previous;
+        }, 2000);
       }
     });
   });
@@ -121,9 +129,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const syncQuestionType = () => {
       optionPanel.hidden = !['single', 'multiple'].includes(typeSelect.value);
-      correctnessHint.textContent = typeSelect.value === 'single'
-        ? 'Markiere genau eine richtige Antwort.'
-        : 'Markiere alle richtigen Antworten.';
+      correctnessHint.textContent = typeSelect.value === 'single' ?
+        'Markiere genau eine richtige Antwort.' :
+        'Markiere alle richtigen Antworten.';
     };
 
     addButton?.addEventListener('click', () => {
@@ -131,7 +139,7 @@ document.addEventListener('DOMContentLoaded', () => {
       const row = document.createElement('div');
       row.className = 'option-editor-row';
       row.dataset.optionRow = '';
-      row.innerHTML = '<span class="option-grip" aria-hidden="true"></span><div class="field-block option-text-field"><label></label><input type="text" placeholder="Neue Antwortmöglichkeit" data-option-text></div><label class="correct-check"><input type="checkbox" data-option-correct><span>Korrekt</span></label><button class="icon-link danger-link option-remove" type="button" title="Antwort entfernen" aria-label="Antwort entfernen">×</button>';
+      row.innerHTML = '<span class="option-grip" aria-hidden="true"></span><div class="field-block option-text-field"><label></label><input type="text" placeholder="Neue Antwortmöglichkeit" data-option-text></div><label class="correct-check"><input type="checkbox" data-option-correct><span>Korrekt</span></label><button class="icon-link danger-link option-remove" type="button" title="Antwort entfernen" aria-label="Antwort entfernen"><svg aria-hidden="true" viewBox="0 0 24 24" focusable="false"><path d="M4 7h16M9 7V4h6v3m-9 0 1 13h10l1-13M10 11v5m4-5v5" /></svg></button>';
       optionList.append(row);
       renumberOptions();
       row.querySelector('[data-option-text]').focus();

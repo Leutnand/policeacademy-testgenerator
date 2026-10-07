@@ -10,16 +10,22 @@ class Migration(migrations.Migration):
         migrations.AddField(
             model_name="testsession",
             name="time_limit_minutes",
-            field=models.PositiveIntegerField(blank=True, null=True, verbose_name="Zeitlimit in Minuten"),
+            field=models.PositiveIntegerField(
+                blank=True, null=True, verbose_name="Zeitlimit in Minuten"
+            ),
         ),
         migrations.AddField(
             model_name="testsession",
             name="started_at",
-            field=models.DateTimeField(blank=True, null=True, verbose_name="Gestartet am"),
+            field=models.DateTimeField(
+                blank=True, null=True, verbose_name="Gestartet am"
+            ),
         ),
         migrations.AddField(
             model_name="testsession",
             name="elapsed_seconds",
-            field=models.PositiveIntegerField(blank=True, null=True, verbose_name="Bearbeitungszeit in Sekunden"),
+            field=models.PositiveIntegerField(
+                blank=True, null=True, verbose_name="Bearbeitungszeit in Sekunden"
+            ),
         ),
     ]
