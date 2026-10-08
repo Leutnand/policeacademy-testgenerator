@@ -88,15 +88,16 @@ Technische Django-Modellrechte und Admin-Protokollrechte werden nicht im Rechtee
 
 **Dynamische Poolberechtigungen**
 
-Bei jedem Fragenpool erzeugt das System fünf Permissions mit dem Poolschlüssel im Codename, beispielsweise `core.can_view_pool_12`, `core.can_edit_pool_12`, `core.can_import_export_pool_12`, `core.can_generate_test_from_pool_12` und `core.can_view_submissions_pool_12`. Sie werden nach Fragenpool gruppiert und beim Löschen des Pools mit entfernt.
+Bei jedem Fragenpool erzeugt das System sechs Permissions mit dem Poolschlüssel im Codename, beispielsweise `core.can_view_pool_12`, `core.can_edit_pool_12`, `core.can_import_export_pool_12`, `core.can_generate_test_from_pool_12`, `core.can_view_submissions_pool_12` und `core.can_delete_questions_pool_12`. Sie werden nach Fragenpool gruppiert und beim Löschen des Pools mit entfernt.
 
 | Suffix/Aktion | Wirkung |
 | --- | --- |
 | `can_view_pool_<id>` | Pool und seine Fragen in der Übersicht sehen |
-| `can_edit_pool_<id>` | Fragen in diesem Pool hinzufügen, bearbeiten und löschen; zusätzlich ist View-Recht erforderlich |
+| `can_edit_pool_<id>` | Fragen in diesem Pool hinzufügen und bearbeiten; zusätzlich ist View-Recht erforderlich |
 | `can_import_export_pool_<id>` | Fragen dieses Pools als CSV importieren und exportieren; der Export enthält interne Lösungsschlüssel |
 | `can_generate_test_from_pool_<id>` | Tests ausschließlich aus diesem Pool erzeugen |
 | `can_view_submissions_pool_<id>` | Abgaben zu diesem Pool ansehen und bewerten |
+| `can_delete_questions_pool_<id>` | Fragen dieses Pools einzeln oder per Auswahlkästchen mehrfach löschen; unabhängig vom Edit-Recht, zusätzlich ist das View-Recht erforderlich |
 
 Eine Testabgabe gehört zu genau einem Pool, der beim Erzeugen am Test gespeichert wird. Die Auswertungsübersicht und Detail-URLs filtern deshalb nach der jeweiligen Poolberechtigung; eine Berechtigung für Pool A zeigt keine Tests aus Pool B. Administratoren sehen alle Pools.
 

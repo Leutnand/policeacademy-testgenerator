@@ -54,15 +54,44 @@
         {% for question in questions %}<tr><td class="question-cell"><span class="question-title">{{ question.text|truncatechars:100 }}</span></td><td><span class="type-label">{{ question.get_question_type_display }}</span></td><td><strong>{{ question.points }}</strong><span class="muted points-unit"> PTS</span></td><td>{% if question.is_pinned %}<span class="status-pill pinned"><span>★</span> Pflichtfrage</span>{% else %}<span class="pool-label"><i></i> Zufallspool</span>{% endif %}</td><td class="row-actions">{% if can_edit_selected_pool %}<a class="icon-link"
                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        href="{% url 'question_edit' question.pk %}"
                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        title="Bearbeiten"
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       aria-label="Frage bearbeiten" title="Bearbeiten"><svg aria-hidden="true" viewBox="0 0 24 24" focusable="false"><path d="M4 20h4L19 9l-4-4L4 16v4ZM13.5 6.5l4 4" /></svg></a><form method="post"
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       aria-label="Frage bearbeiten" title="Bearbeiten"><svg aria-hidden="true" viewBox="0 0 24 24" focusable="false"><path d="M4 20h4L19 9l-4-4L4 16v4ZM13.5 6.5l4 4" /></svg></a>{% endif %}{% if can_delete_selected_pool %}<form method="post"
                                                    action="{% url 'question_delete' question.pk %}"
                                                    onsubmit="return confirm('Diese Frage wirklich löschen?')">{% csrf_token %}<button class="icon-link danger-link"
                                                                                              title="Löschen"
-                                                                                             aria-label="Frage löschen" title="Löschen"><svg aria-hidden="true" viewBox="0 0 24 24" focusable="false"><path d="M4 7h16M9 7V4h6v3m-9 0 1 13h10l1-13M10 11v5m4-5v5" /></svg></button></form>{% endif %}</td></tr>
+                                                                                             aria-label="Frage löschen" title="Löschen"><svg aria-hidden="true" viewBox="0 0 24 24" focusable="false"><path d="M4 7h16M9 7V4h6v3m-9 0 1 13h10l1-13M10 11v5m4-5v5" /></svg></button></form><input type="checkbox" class="question-select" form="bulk-delete-form" name="question_ids" value="{{ question.pk }}" aria-label="Frage auswählen">{% endif %}</td></tr>
         {% empty %}<tr><td colspan="5" class="empty-state">{% if selected_pool %}In „{{ selected_pool.name }}“ sind noch keine Fragen. Lege die erste Prüfungsfrage für diesen Typ an.{% else %}Es gibt noch keinen Fragenpool. Lege zuerst einen Prüfungstyp an.{% endif %}</td></tr>{% endfor %}
       </tbody>
     </table>
   </div>
+  {% if can_delete_selected_pool and questions %}
+    <form id="bulk-delete-form"
+          method="post"
+          action="{% url 'question_bulk_delete' selected_pool.pk %}"
+          class="bulk-actions"
+          onsubmit="return confirm('Ausgewählte Fragen wirklich löschen?')">
+      {% csrf_token %}
+      <label><input type="checkbox" id="select-all-questions"> Alle auf dieser Seite auswählen</label>
+      <button class="button quiet small bulk-delete-button" type="submit" id="bulk-delete-button" disabled><svg aria-hidden="true" viewBox="0 0 24 24" focusable="false"><path d="M4 7h16M9 7V4h6v3m-6 0 1 13h10l1-13M10 11v5m4-5v5" /></svg><span id="bulk-delete-label">Ausgewählte löschen</span></button>
+    </form>
+    <script>
+      (function () {
+        var boxes = document.querySelectorAll('.question-select');
+        var all = document.getElementById('select-all-questions');
+        var btn = document.getElementById('bulk-delete-button');
+        function sync() {
+          var n = document.querySelectorAll('.question-select:checked').length;
+          btn.disabled = n === 0;
+          document.getElementById('bulk-delete-label').textContent = n ? 'Ausgewählte löschen (' + n + ')' : 'Ausgewählte löschen';
+          all.checked = n > 0 && n === boxes.length;
+        }
+        all.addEventListener('change', function () {
+          boxes.forEach(function (b) { b.checked = all.checked; });
+          sync();
+        });
+        boxes.forEach(function (b) { b.addEventListener('change', sync); });
+      })();
+    </script>
+  {% endif %}
   {% if question_page and question_page.has_other_pages %}<nav class="log-pagination" aria-label="Fragenbankseiten">{% if question_page.has_previous %}<a class="button quiet small"
                                                                                                                                                           href="?{% if question_pagination_query %}{{ question_pagination_query }}&amp;{% endif %}page={{ question_page.previous_page_number }}">← Vorherige</a>{% endif %}<span>Seite {{ question_page.number }} / {{ question_page.paginator.num_pages }}</span>{% if question_page.has_next %}<a class="button quiet small"
                                                                                                                                                                                                                                                                                               href="?{% if question_pagination_query %}{{ question_pagination_query }}&amp;{% endif %}page={{ question_page.next_page_number }}">Nächste →</a>{% endif %}</nav>{% endif %}

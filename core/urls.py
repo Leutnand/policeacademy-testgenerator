@@ -40,6 +40,11 @@ urlpatterns = [
         views.question_delete,
         name="question_delete",
     ),
+    path(
+        "admin-dashboard/pools/<int:pool_pk>/questions/bulk-delete/",
+        views.question_bulk_delete,
+        name="question_bulk_delete",
+    ),
     path("admin-dashboard/users/", views.users_dashboard, name="users_dashboard"),
     path("admin-dashboard/users/new/", views.user_create, name="user_create"),
     path(

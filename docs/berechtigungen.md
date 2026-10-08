@@ -33,15 +33,16 @@ Die Nutzerrechte Grant und Revoke sind absichtlich getrennt. Gleiches gilt für 
 
 ## Poolrechte
 
-Für jeden Fragenpool erzeugt die Anwendung fünf eigene Rechte. Die Pool-ID im Codename begrenzt das Recht auf genau diesen Pool.
+Für jeden Fragenpool erzeugt die Anwendung sechs eigene Rechte. Die Pool-ID im Codename begrenzt das Recht auf genau diesen Pool.
 
 | Muster | Wirkung |
 | --- | --- |
 | `core.can_view_pool_<id>` | Fragen des Pools in der Fragenbank ansehen. |
-| `core.can_edit_pool_<id>` | Fragen dieses Pools anlegen, bearbeiten und löschen. Zusätzlich ist das View-Recht erforderlich. |
+| `core.can_edit_pool_<id>` | Fragen dieses Pools anlegen und bearbeiten. Zusätzlich ist das View-Recht erforderlich. |
 | `core.can_import_export_pool_<id>` | CSV-Fragen dieses Pools importieren und exportieren. Zusätzlich ist `core.can_view_pool_<id>` erforderlich. Der Excel-freundliche Export enthält interne Lösungsschlüssel. |
 | `core.can_generate_test_from_pool_<id>` | Tests ausschließlich aus diesem Pool erstellen. |
 | `core.can_view_submissions_pool_<id>` | Abgaben dieses Pools ansehen und bewerten. |
+| `core.can_delete_questions_pool_<id>` | Fragen dieses Pools einzeln oder per Auswahlkästchen mehrfach löschen. Unabhängig vom Edit-Recht; zusätzlich ist das View-Recht erforderlich. |
 
 Poolrechte tauchen im Editor als eigener Abschnitt pro Pool auf. Zwei gleichartige Aktionen für unterschiedliche Pools sind keine Dubletten, sondern getrennte Freigaben. Die technischen Django-Modellrechte sind für die eigene Mitarbeiteroberfläche nicht relevant und werden nicht zur Vergabe angeboten. Das technische Django-Admin ist deaktiviert; Django-Authentifizierung, Gruppen, Berechtigungen, Sessions und Content-Types bleiben als interne Grundlagen der Anwendung bestehen.
 

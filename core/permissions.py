@@ -9,6 +9,7 @@ POOL_PERMISSION_PREFIXES = {
     "import_export": "can_import_export_pool_",
     "generate": "can_generate_test_from_pool_",
     "submissions": "can_view_submissions_pool_",
+    "delete": "can_delete_questions_pool_",
 }
 GLOBAL_PERMISSION_CODES = {
     "can_manage_users": "core.can_manage_users",
@@ -53,10 +54,11 @@ def pool_permission_name(action, question_pool):
     """Liefert die verständliche Rechtebezeichnung für Gruppen- und Benutzerformulare."""
     labels = {
         "view": "Fragenpool einsehen",
-        "edit": "Fragen im Pool bearbeiten, hinzufügen und löschen",
+        "edit": "Fragen im Pool bearbeiten und hinzufügen",
         "import_export": "Fragen im Pool importieren und exportieren",
         "generate": "Tests aus diesem Pool generieren",
         "submissions": "Abgaben dieses Pools einsehen und bewerten",
+        "delete": "Fragen im Pool löschen (einzeln und mehrere gleichzeitig)",
     }
     return f"{labels[action]}: {question_pool.name}"
 

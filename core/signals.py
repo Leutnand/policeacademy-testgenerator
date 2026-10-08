@@ -42,5 +42,9 @@ def synchronize_dynamic_permissions(sender, using, **kwargs):
     """Stellt dynamische Poolrechte nach Migrationen wieder her."""
     if sender.name != "core":
         return
+    content_type = ContentType.objects.db_manager(using).get_for_model(QuestionPool)
+    Permission.objects.using(using).filter(
+        content_type=content_type, codename__startswith="can_bulk_delete_questions_pool_"
+    ).delete()
     for question_pool in QuestionPool.objects.using(using).all().iterator():
         ensure_question_pool_permissions(QuestionPool, question_pool, using=using)

@@ -26,6 +26,45 @@ from ..permissions import pool_permission_codename
 class SubmissionAndPoolViewTests(TestCase):
     """Prüft Auswertung, Fragenformular und Prüfungstyp-Verwaltung."""
 
+    def test_delete_is_its_own_pool_permission(self):
+        """Löschen (einzeln und mehrfach) braucht view und das eigene Löschrecht, nicht edit."""
+        user = get_user_model().objects.create_user(username="bulk", password="x")
+        question_pool = QuestionPool.objects.create(name="Bulk-Pool")
+        questions = [
+            Question.objects.create(
+                question_pool=question_pool,
+                text=f"Frage {i}",
+                question_type=Question.Type.SHORT,
+                points=1,
+                answer_key="a",
+            )
+            for i in range(4)
+        ]
+        bulk_url = reverse("question_bulk_delete", args=[question_pool.pk])
+        single_url = reverse("question_delete", args=[questions[3].pk])
+        data = {"question_ids": [q.pk for q in questions[:2]]}
+
+        def grant(*actions):
+            user.user_permissions.add(
+                *[
+                    Permission.objects.get(
+                        content_type__app_label="core",
+                        codename=pool_permission_codename(action, question_pool),
+                    )
+                    for action in actions
+                ]
+            )
+            self.client.force_login(get_user_model().objects.get(pk=user.pk))
+
+        grant("view", "edit")
+        self.assertEqual(self.client.post(bulk_url, data).status_code, 403)
+        self.assertEqual(self.client.post(single_url).status_code, 403)
+        self.assertEqual(Question.objects.count(), 4)
+        grant("delete")
+        self.assertEqual(self.client.post(bulk_url, data).status_code, 302)
+        self.assertEqual(self.client.post(single_url).status_code, 302)
+        self.assertEqual(Question.objects.count(), 1)
+
     def test_submission_summary_renders_for_authorized_user(self):
         """Zeigt Gesamtpunkte nur nach Prüfung der Auswertungsberechtigung."""
         user = get_user_model().objects.create_user(

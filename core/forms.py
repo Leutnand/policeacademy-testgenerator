@@ -187,10 +187,11 @@ def add_permission_checkboxes(form, selected_ids=()):
     }
     pool_help = {
         "view": "Erlaubt, Fragen dieses Pools in der Academy-Fragenbank anzusehen.",
-        "edit": "Erlaubt Fragen dieses Pools anzulegen, zu bearbeiten und zu löschen. Zusätzlich ist das Ansichtsrecht nötig.",
+        "edit": "Erlaubt Fragen dieses Pools anzulegen und zu bearbeiten. Zusätzlich ist das Ansichtsrecht nötig.",
         "import_export": "Erlaubt den CSV-Import und -Export dieses Pools. Der Export enthält interne Lösungsschlüssel.",
         "generate": "Erlaubt Tests ausschließlich aus diesem Fragenpool zu erstellen.",
         "submissions": "Erlaubt Abgaben dieses Pools anzusehen und zu bewerten.",
+        "delete": "Erlaubt Fragen dieses Pools einzeln oder per Auswahl gleichzeitig zu löschen. Unabhängig vom Bearbeitungsrecht; zusätzlich ist das Ansichtsrecht nötig.",
     }
     sections = {}
     for permission in permissions:

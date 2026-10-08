@@ -74,6 +74,9 @@ def admin_dashboard(request):
             "can_edit_selected_pool": has_pool_access(
                 request.user, selected_pool, "edit"
             ),
+            "can_delete_selected_pool": has_pool_access(
+                request.user, selected_pool, "delete"
+            ),
             "can_import_export_selected_pool": has_pool_access(
                 request.user, selected_pool, "import_export"
             ),
@@ -318,6 +321,9 @@ def question_import(request, pool_id):
                 "can_edit_selected_pool": has_pool_access(
                     request.user, question_pool, "edit"
                 ),
+                "can_delete_selected_pool": has_pool_access(
+                    request.user, question_pool, "delete"
+                ),
                 "can_import_export_selected_pool": True,
                 "csv_import_form": form,
                 "csv_import_errors": errors,
@@ -549,9 +555,12 @@ def question_delete(request, pk):
     question = get_object_or_404(Question, pk=pk)
     if not has_pool_access(
         request.user, question.question_pool, "view"
-    ) or not has_pool_access(request.user, question.question_pool, "edit"):
+    ) or not has_pool_access(request.user, question.question_pool, "delete"):
         return render(
-            request, "core/403.html", {"capability": "can_edit_pool"}, status=403
+            request,
+            "core/403.html",
+            {"capability": "can_delete_questions_pool"},
+            status=403,
         )
     question_pool_id = question.question_pool_id
     record_event(
@@ -571,3 +580,44 @@ def question_delete(request, pk):
     question.delete()
     messages.success(request, "Frage wurde gelöscht.")
     return redirect(f"{reverse('admin_dashboard')}?pool={question_pool_id}")
+
+
+@login_required
+@require_POST
+def question_bulk_delete(request, pool_pk):
+    """Löscht mehrere ausgewählte Fragen eines Pools per POST."""
+    question_pool = get_object_or_404(QuestionPool, pk=pool_pk)
+    if not has_pool_access(request.user, question_pool, "view") or not has_pool_access(
+        request.user, question_pool, "delete"
+    ):
+        return render(
+            request,
+            "core/403.html",
+            {"capability": "can_delete_questions_pool"},
+            status=403,
+        )
+    ids = [i for i in request.POST.getlist("question_ids") if i.isdigit()]
+    questions = list(Question.objects.filter(question_pool=question_pool, pk__in=ids))
+    redirect_url = f"{reverse('admin_dashboard')}?pool={question_pool.pk}"
+    if not questions:
+        messages.error(request, "Es wurden keine Fragen ausgewählt.")
+        return redirect(redirect_url)
+    with transaction.atomic():
+        for question in questions:
+            record_event(
+                request,
+                AuditLog.Category.QUESTION,
+                "question.deleted",
+                "Prüfungsfrage gelöscht.",
+                "question",
+                question.pk,
+                {
+                    "text": question.text,
+                    "question_type": question.question_type,
+                    "options": question.options,
+                    "answer_key": question.answer_key,
+                },
+            )
+            question.delete()
+    messages.success(request, f"{len(questions)} Fragen wurden gelöscht.")
+    return redirect(redirect_url)

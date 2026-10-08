@@ -25,6 +25,7 @@ from .questions import (
     pool_delete,
     question_create,
     question_edit,
+    question_bulk_delete,
     question_delete,
 )
 from .tests_flow import (
@@ -67,6 +68,7 @@ __all__ = [
     "pool_delete",
     "question_create",
     "question_edit",
+    "question_bulk_delete",
     "question_delete",
     "generate_test_view",
     "take_test",

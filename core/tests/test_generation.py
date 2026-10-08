@@ -117,7 +117,14 @@ class TestGenerationTests(TestCase):
     def test_pool_permissions_are_created_updated_and_deleted_with_pool(self):
         """Jeder Pool erhält vier eigene Permissions, die beim Löschen entfernt werden."""
         question_pool = QuestionPool.objects.create(name="Dynamik-Prüfung")
-        actions = ["view", "edit", "import_export", "generate", "submissions"]
+        actions = [
+            "view",
+            "edit",
+            "import_export",
+            "generate",
+            "submissions",
+            "delete",
+        ]
         permissions = [
             Permission.objects.get(
                 content_type__app_label="core",
@@ -125,7 +132,7 @@ class TestGenerationTests(TestCase):
             )
             for action in actions
         ]
-        self.assertEqual(len(permissions), 5)
+        self.assertEqual(len(permissions), 6)
         self.assertTrue(
             all(question_pool.name in permission.name for permission in permissions)
         )
