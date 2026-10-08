@@ -22,7 +22,7 @@ Fragen werden einem benannten Fragenpool zugeordnet, zum Beispiel **Einstellungs
 
 Bei der Testgenerierung muss zuerst der Prüfungstyp gewählt werden. Alle verankerten Fragen und die zufällige Ergänzung kommen ausschließlich aus diesem Pool. Auch der erzeugte Test speichert den verwendeten Pool; er erscheint in der Ergebnisübersicht und Detailauswertung. Bestehende Fragen und Testläufe werden bei der Migration dem initialen Pool **Einstellungstest** zugewiesen.
 
-Administratoren können unter **Einstellungen** globale Mindest- und Höchstzahlen für Fragen eines erzeugten Tests festlegen. Die Obergrenze kann die tatsächliche Größe des ausgewählten Pools nicht überschreiten.
+Pro Fragenpool werden beim Anlegen oder Bearbeiten eine Mindest- und Höchstzahl an Fragen festgelegt. Beim Erzeugen eines Tests wird die Fragenzahl nicht mehr eingegeben, sondern zufällig innerhalb dieser Spanne gewählt (begrenzt durch die Poolgröße; angeheftete Fragen sind immer enthalten).
 
 Bei einer Auswahlfrage werden pro Zeile Antworttext und Korrekt-Markierung gepflegt. Single Choice verlangt genau eine richtige Antwort, Multiple Choice mindestens eine richtige Antwort. Im Datensatz sieht die interne Darstellung beispielsweise so aus:
 
@@ -56,7 +56,7 @@ Die Datenbankstruktur und Permission-Metadaten werden mit `python manage.py migr
 
 ## Tool-Einstellungen und Datenschutz
 
-Mitarbeiter mit dem Recht `can_manage_tool_settings` öffnen über die Navigation **Einstellungen** die Tool-Einstellungen. Dort können sie Seitentitel, Department-Name, Favicon/Site-Icon (PNG oder ICO bis 1 MB), Mindest-/Höchstzahl der Testfragen und die sichtbaren Texte der Loginseite pflegen. Das Icon und die Rechtstexte werden in der Datenbank beziehungsweise im Media-Speicher gespeichert; Docker verwendet dafür das persistente Volume `media_data`.
+Mitarbeiter mit dem Recht `can_manage_tool_settings` öffnen über die Navigation **Einstellungen** die Tool-Einstellungen. Dort können sie Seitentitel, Department-Name, Favicon/Site-Icon (PNG oder ICO bis 1 MB) und die sichtbaren Texte der Loginseite pflegen. Das Icon und die Rechtstexte werden in der Datenbank beziehungsweise im Media-Speicher gespeichert; Docker verwendet dafür das persistente Volume `media_data`.
 
 Auf derselben Seite werden Datenschutzerklärung und Impressum hinterlegt. Der Footer verlinkt auf **Impressum / DSGVO**; dort ist auch die Datenschutzerklärung erreichbar. Sobald eine Datenschutzerklärung konfiguriert ist, muss jedes Mitarbeiterkonto ihre aktuelle Fassung bestätigen, bevor es andere Mitarbeiterfunktionen nutzen kann. Änderungen am Erklärungstext lösen eine erneute Bestätigung aus. Für die Bestätigung wird ein Hash des Textes gespeichert, nicht der Text im Mitarbeiterprofil. Die Anwendung liefert keine vorgefertigte Rechtsberatung; die zuständige Stelle muss die tatsächlichen, rechtlich geprüften Inhalte eintragen.
 

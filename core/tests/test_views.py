@@ -345,7 +345,12 @@ class SubmissionAndPoolViewTests(TestCase):
         self.client.force_login(manager)
         response = self.client.post(
             reverse("pools_dashboard"),
-            {"name": "Sergeant-Auswahl", "description": "Aufstiegstest"},
+            {
+                "name": "Sergeant-Auswahl",
+                "description": "Aufstiegstest",
+                "minimum_test_questions": "1",
+                "maximum_test_questions": "10",
+            },
         )
         self.assertRedirects(response, reverse("pools_dashboard"))
         question_pool = QuestionPool.objects.get(name="Sergeant-Auswahl")
@@ -358,7 +363,12 @@ class SubmissionAndPoolViewTests(TestCase):
         )
         response = self.client.post(
             reverse("pool_edit", args=[question_pool.pk]),
-            {"name": "Sergeant-Test", "description": "Aufstiegstest"},
+            {
+                "name": "Sergeant-Test",
+                "description": "Aufstiegstest",
+                "minimum_test_questions": "1",
+                "maximum_test_questions": "10",
+            },
         )
         self.assertRedirects(response, reverse("pools_dashboard"))
         question_pool.refresh_from_db()
@@ -592,8 +602,6 @@ class StaffAndSettingsTests(TestCase):
             {
                 "site_name": "Academy Prüfungen",
                 "department_name": "San Andreas Training",
-                "minimum_test_questions": "2",
-                "maximum_test_questions": "3",
                 "login_page_heading": "Sicher trainieren",
                 "login_page_text": "Bitte mit Teamkonto anmelden.",
                 "privacy_policy": "",
@@ -603,14 +611,15 @@ class StaffAndSettingsTests(TestCase):
         self.assertRedirects(response, reverse("tool_settings"))
         configuration = ToolSettings.objects.get(pk=1)
         self.assertEqual(configuration.site_name, "Academy Prüfungen")
-        self.assertEqual(configuration.minimum_test_questions, 2)
         self.client.logout()
         self.assertContains(self.client.get(reverse("login")), "Sicher trainieren")
         self.assertContains(
             self.client.get(reverse("privacy_policy")), "San Andreas Police Department"
         )
 
-        question_pool = QuestionPool.objects.create(name="Fragenlimit")
+        question_pool = QuestionPool.objects.create(
+            name="Fragenlimit", minimum_test_questions=2, maximum_test_questions=3
+        )
         Question.objects.create(
             question_pool=question_pool,
             text="Eine Frage",
@@ -628,27 +637,34 @@ class StaffAndSettingsTests(TestCase):
         self.assertContains(settings_page, "data-original-privacy")
         response = self.client.post(
             reverse("generate_test"),
+            {"question_pool": str(question_pool.pk)},
+        )
+        self.assertContains(response, "Spanne dieses Pools")
+        self.assertFalse(TestSession.objects.filter(question_pool=question_pool).exists())
+        response = self.client.post(
+            reverse("pool_edit", args=[question_pool.pk]),
             {
-                "question_pool": str(question_pool.pk),
-                "question_count": "1",
+                "name": "Fragenlimit",
+                "description": "",
+                "minimum_test_questions": "5",
+                "maximum_test_questions": "2",
             },
         )
-        self.assertContains(response, "mindestens 2")
+        self.assertEqual(response.status_code, 200)
+        question_pool.refresh_from_db()
+        self.assertEqual(question_pool.minimum_test_questions, 2)
         response = self.client.post(
             reverse("tool_settings"),
             {
                 "site_name": "Ungültig",
                 "department_name": "Department",
-                "minimum_test_questions": "5",
-                "maximum_test_questions": "2",
                 "login_page_heading": "Überschrift",
                 "login_page_text": "Text",
                 "privacy_policy": "",
                 "imprint": "",
             },
         )
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(ToolSettings.objects.get(pk=1).site_name, "Academy Prüfungen")
+        self.assertEqual(response.status_code, 302)
 
         employee = get_user_model().objects.create_user(username="settings-employee")
         self.client.force_login(employee)
@@ -664,8 +680,6 @@ class StaffAndSettingsTests(TestCase):
             {
                 "site_name": "Delegierte Einstellungen",
                 "department_name": "Department",
-                "minimum_test_questions": "1",
-                "maximum_test_questions": "20",
                 "login_page_heading": "Heading",
                 "login_page_text": "Login",
                 "privacy_policy": "",
@@ -752,8 +766,6 @@ class StaffAndSettingsTests(TestCase):
                     {
                         "site_name": "Icon-Test",
                         "department_name": "Department",
-                        "minimum_test_questions": "1",
-                        "maximum_test_questions": "20",
                         "login_page_heading": "Heading",
                         "login_page_text": "Login",
                         "privacy_policy": "",

@@ -548,8 +548,6 @@ class ToolSettingsForm(forms.ModelForm):
             "site_name",
             "department_name",
             "site_icon",
-            "minimum_test_questions",
-            "maximum_test_questions",
             "login_page_heading",
             "login_page_text",
             "privacy_policy",
@@ -571,25 +569,6 @@ class ToolSettingsForm(forms.ModelForm):
         self.fields["department_name"].widget.attrs["data-settings-department"] = ""
         self.fields["login_page_heading"].widget.attrs["data-settings-heading"] = ""
         self.fields["login_page_text"].widget.attrs["data-settings-login-text"] = ""
-        for field_name in ("minimum_test_questions", "maximum_test_questions"):
-            self.fields[field_name].min_value = 1
-            self.fields[field_name].validators.append(
-                MinValueValidator(
-                    1, message="Die Fragenzahl muss mindestens 1 betragen."
-                ),
-            )
-            self.fields[field_name].widget.attrs["min"] = 1
-
-    def clean(self):
-        cleaned = super().clean()
-        minimum = cleaned.get("minimum_test_questions")
-        maximum = cleaned.get("maximum_test_questions")
-        if minimum is not None and maximum is not None and minimum > maximum:
-            self.add_error(
-                "maximum_test_questions",
-                "Die maximale Fragenzahl muss mindestens der minimalen Fragenzahl entsprechen.",
-            )
-        return cleaned
 
     def clean_site_icon(self):
         icon = self.cleaned_data.get("site_icon")
@@ -621,9 +600,6 @@ class GenerateTestForm(forms.Form):
         queryset=QuestionPool.objects.none(),
         empty_label="Prüfungstyp auswählen",
     )
-    question_count = forms.IntegerField(
-        label="Fragen im Test", min_value=1, widget=forms.NumberInput(attrs={"min": 1})
-    )
     time_limit_minutes = forms.IntegerField(
         label="Maximale Testdauer in Minuten",
         min_value=1,
@@ -638,8 +614,6 @@ class GenerateTestForm(forms.Form):
     def __init__(self, *args, **kwargs):
         """Bietet nur autorisierte Pools an und wählt den ersten davon vor."""
         question_pools = kwargs.pop("question_pools", None)
-        minimum = kwargs.pop("minimum_questions", 1)
-        maximum = kwargs.pop("maximum_questions", 100)
         super().__init__(*args, **kwargs)
         self.fields["question_pool"].queryset = (
             question_pools
@@ -650,22 +624,6 @@ class GenerateTestForm(forms.Form):
             self.fields["question_pool"].initial = self.fields[
                 "question_pool"
             ].queryset.first()
-        question_count = self.fields["question_count"]
-        question_count.min_value = minimum
-        question_count.max_value = maximum
-        question_count.validators.extend(
-            [
-                MinValueValidator(
-                    minimum,
-                    message=f"Die Fragenzahl muss mindestens {minimum} betragen.",
-                ),
-                MaxValueValidator(
-                    maximum,
-                    message=f"Die Fragenzahl darf höchstens {maximum} betragen.",
-                ),
-            ]
-        )
-        question_count.widget.attrs.update({"min": minimum, "max": maximum})
 
 
 class QuestionCsvImportForm(forms.Form):
@@ -698,10 +656,40 @@ class QuestionPoolForm(forms.ModelForm):
     """Erstellt und bearbeitet benannte Prüfungstypen/Fragenpools."""
 
     class Meta:
-        """Beschränkt Poolpflege auf Namen und optionale Beschreibung."""
+        """Beschränkt Poolpflege auf Namen, Beschreibung und Fragenzahl-Spanne."""
 
         model = QuestionPool
-        fields = ("name", "description")
+        fields = (
+            "name",
+            "description",
+            "minimum_test_questions",
+            "maximum_test_questions",
+        )
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        for field_name in ("minimum_test_questions", "maximum_test_questions"):
+            self.fields[field_name].min_value = 1
+            self.fields[field_name].validators.append(
+                MinValueValidator(
+                    1, message="Die Fragenzahl muss mindestens 1 betragen."
+                )
+            )
+            self.fields[field_name].widget.attrs["min"] = 1
+        self.fields["minimum_test_questions"].help_text = (
+            "Jeder Test aus diesem Pool enthält zufällig zwischen Minimum und Maximum Fragen."
+        )
+
+    def clean(self):
+        cleaned = super().clean()
+        minimum = cleaned.get("minimum_test_questions")
+        maximum = cleaned.get("maximum_test_questions")
+        if minimum is not None and maximum is not None and minimum > maximum:
+            self.add_error(
+                "maximum_test_questions",
+                "Die maximale Fragenzahl muss mindestens der minimalen Fragenzahl entsprechen.",
+            )
+        return cleaned
 
 
 class OtpForm(forms.Form):

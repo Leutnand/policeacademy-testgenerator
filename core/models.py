@@ -12,6 +12,12 @@ class QuestionPool(models.Model):
 
     name = models.CharField("Name des Fragenpools", max_length=120, unique=True)
     description = models.TextField("Beschreibung", blank=True)
+    minimum_test_questions = models.PositiveIntegerField(
+        "Minimale Fragenzahl je Test", default=1
+    )
+    maximum_test_questions = models.PositiveIntegerField(
+        "Maximale Fragenzahl je Test", default=100
+    )
     created_at = models.DateTimeField("Erstellt am", auto_now_add=True)
 
     class Meta:
@@ -71,12 +77,6 @@ class ToolSettings(models.Model):
         upload_to="site-icons/",
         blank=True,
         validators=[FileExtensionValidator(allowed_extensions=["ico", "png"])],
-    )
-    minimum_test_questions = models.PositiveIntegerField(
-        "Minimale Fragenzahl je Test", default=1
-    )
-    maximum_test_questions = models.PositiveIntegerField(
-        "Maximale Fragenzahl je Test", default=100
     )
     login_page_heading = models.TextField(
         "Überschrift der Anmeldeseite",

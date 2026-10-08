@@ -60,6 +60,22 @@ class TestGenerationTests(TestCase):
         self.assertTrue(check_password(otp, test.otp_hash))
         self.assertEqual(test.question_pool, self.question_pool)
 
+    def test_question_count_is_random_within_pool_range(self):
+        """Ohne Angabe liegt die Fragenzahl innerhalb der Spanne des Pools."""
+        self.question_pool.minimum_test_questions = 3
+        self.question_pool.maximum_test_questions = 4
+        self.question_pool.save()
+        counts = {
+            generate_test(None, self.user, self.question_pool)[0].items.count()
+            for _ in range(30)
+        }
+        self.assertTrue(counts <= {3, 4})
+        self.question_pool.minimum_test_questions = 4
+        self.question_pool.maximum_test_questions = 4
+        self.question_pool.save()
+        test, _otp = generate_test(None, self.user, self.question_pool)
+        self.assertEqual(test.items.count(), 4)
+
     def test_invalid_question_count_is_rejected(self):
         """Unmögliche Testumfänge werden fachlich abgewiesen."""
         with self.assertRaises(TestGenerationError):
@@ -77,11 +93,7 @@ class TestGenerationTests(TestCase):
         self.client.force_login(administrator)
         response = self.client.post(
             reverse("generate_test"),
-            {
-                "question_pool": self.question_pool.pk,
-                "question_count": 3,
-                "time_limit_minutes": 10,
-            },
+            {"question_pool": self.question_pool.pk, "time_limit_minutes": 10},
         )
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Zeitlimit: 10 Minuten")

@@ -13,7 +13,10 @@ class TestGenerationError(ValueError):
 
 
 def generate_test(question_count, creator, question_pool):
-    """Wählt Fragen ausschließlich aus dem gewählten Prüfungstyp aus."""
+    """Wählt Fragen ausschließlich aus dem gewählten Prüfungstyp aus.
+
+    Ohne explizite Anzahl wird zufällig eine Zahl innerhalb der Spanne des Pools gewählt.
+    """
     if not isinstance(question_pool, QuestionPool):
         raise TestGenerationError("Wähle zuerst einen gültigen Fragenpool aus.")
     pool = list(Question.objects.filter(question_pool=question_pool))
@@ -21,6 +24,15 @@ def generate_test(question_count, creator, question_pool):
     other = [question for question in pool if not question.is_pinned]
     if not pool:
         raise TestGenerationError("Dieser Fragenpool enthält noch keine Fragen.")
+    if question_count is None:
+        lowest = max(question_pool.minimum_test_questions, len(pinned), 1)
+        highest = min(question_pool.maximum_test_questions, len(pool))
+        if lowest > highest:
+            raise TestGenerationError(
+                "Die Fragenzahl-Spanne dieses Pools passt nicht zu seinen verankerten Fragen "
+                "und seiner Größe. Bitte Minimum und Maximum des Pools anpassen."
+            )
+        question_count = secrets.SystemRandom().randint(lowest, highest)
     if question_count < 1 or question_count < len(pinned) or question_count > len(pool):
         raise TestGenerationError(
             "Die Anzahl muss alle verankerten Fragen enthalten und darf den gewählten Pool nicht überschreiten."

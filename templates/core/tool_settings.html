@@ -13,7 +13,7 @@
         class="form-sheet tool-settings-form">
     {% csrf_token %}
     {% for field in form %}
-      {% if field.name == "site_name" %}<div class="section-kicker">ERSCHEINUNGSBILD</div>{% elif field.name == "minimum_test_questions" %}<div class="section-kicker">PRÜFUNGSREGELN</div>{% elif field.name == "login_page_heading" %}<div class="section-kicker">ANMELDESEITE</div>{% elif field.name == "privacy_policy" %}<div class="section-kicker">RECHTSTEXTE</div>{% endif %}
+      {% if field.name == "site_name" %}<div class="section-kicker">ERSCHEINUNGSBILD</div>{% elif field.name == "login_page_heading" %}<div class="section-kicker">ANMELDESEITE</div>{% elif field.name == "privacy_policy" %}<div class="section-kicker">RECHTSTEXTE</div>{% endif %}
       <div class="field-block">
         <label for="{{ field.id_for_label }}">{{ field.label }}</label>
         {{ field }}

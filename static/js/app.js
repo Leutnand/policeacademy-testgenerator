@@ -98,6 +98,10 @@ document.addEventListener('DOMContentLoaded', () => {
     const questionCount = selectedOption.dataset.questionCount || '0';
     const pinnedCount = selectedOption.dataset.pinnedCount || '0';
     poolSummary.textContent = `${selectedOption.textContent.trim()}: ${questionCount} Fragen · ${pinnedCount} davon verankert`;
+    const rangeNote = document.querySelector('#selected-pool-range');
+    if (rangeNote) {
+      rangeNote.textContent = `Zufällig ${selectedOption.dataset.minQuestions} bis ${selectedOption.dataset.maxQuestions} Fragen (Spanne dieses Pools); verankerte Fragen sind immer enthalten.`;
+    }
   });
 
   const questionEditor = document.querySelector('[data-question-editor]');

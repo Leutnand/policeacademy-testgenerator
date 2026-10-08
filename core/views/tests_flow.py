@@ -22,7 +22,6 @@ from ..models import (
     QuestionPool,
     Submission,
     TestSession,
-    ToolSettings,
 )
 from ..permissions import accessible_pools, has_pool_access, is_administrator
 from ..services import TestGenerationError, generate_test, grade_answer
@@ -54,24 +53,21 @@ def generate_test_view(request):
             {"capability": "can_generate_test_from_pool"},
             status=403,
         )
-    configuration = ToolSettings.current()
     form = GenerateTestForm(
         request.POST or None,
         question_pools=generatable_pools,
-        minimum_questions=configuration.minimum_test_questions,
-        maximum_questions=configuration.maximum_test_questions,
     )
     result = None
     form_is_valid = form.is_valid()
     if form_is_valid:
         try:
             test, otp = generate_test(
-                form.cleaned_data["question_count"],
+                None,
                 request.user,
                 form.cleaned_data["question_pool"],
             )
         except TestGenerationError as error:
-            form.add_error("question_count", str(error))
+            form.add_error("question_pool", str(error))
         else:
             test.time_limit_minutes = form.cleaned_data["time_limit_minutes"]
             test.save(update_fields=["time_limit_minutes"])
@@ -128,8 +124,6 @@ def generate_test_view(request):
             "pool_choices": pool_choices,
             "available_count": selected_counts.question_count if selected_counts else 0,
             "pinned_count": selected_counts.pinned_count if selected_counts else 0,
-            "minimum_test_questions": configuration.minimum_test_questions,
-            "maximum_test_questions": configuration.maximum_test_questions,
         },
     )
 
