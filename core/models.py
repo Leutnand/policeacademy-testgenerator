@@ -4,7 +4,11 @@ import uuid
 from django.conf import settings
 from django.contrib.auth.models import Group
 from django.db import models
-from django.core.validators import FileExtensionValidator
+from django.core.validators import (
+    FileExtensionValidator,
+    MaxValueValidator,
+    MinValueValidator,
+)
 
 
 class QuestionPool(models.Model):
@@ -12,11 +16,25 @@ class QuestionPool(models.Model):
 
     name = models.CharField("Name des Fragenpools", max_length=120, unique=True)
     description = models.TextField("Beschreibung", blank=True)
-    minimum_test_questions = models.PositiveIntegerField(
-        "Minimale Fragenzahl je Test", default=1
+    test_question_count = models.PositiveIntegerField(
+        "Fragenzahl je Test",
+        default=20,
+        validators=[MinValueValidator(1)],
     )
-    maximum_test_questions = models.PositiveIntegerField(
-        "Maximale Fragenzahl je Test", default=100
+    pass_percentage = models.PositiveSmallIntegerField(
+        "Bestehgrenze in Prozent",
+        default=50,
+        validators=[MaxValueValidator(100)],
+    )
+    minimum_time_limit_minutes = models.PositiveIntegerField(
+        "Minimales Zeitlimit in Minuten",
+        default=5,
+        validators=[MinValueValidator(1)],
+    )
+    maximum_time_limit_minutes = models.PositiveIntegerField(
+        "Maximales Zeitlimit in Minuten",
+        default=180,
+        validators=[MinValueValidator(1)],
     )
     created_at = models.DateTimeField("Erstellt am", auto_now_add=True)
 
@@ -182,6 +200,9 @@ class TestSession(models.Model):
     created_at = models.DateTimeField("Erstellt am", auto_now_add=True)
     time_limit_minutes = models.PositiveIntegerField(
         "Zeitlimit in Minuten", null=True, blank=True
+    )
+    pass_percentage = models.PositiveSmallIntegerField(
+        "Bestehgrenze in Prozent (bei Erstellung)", null=True, blank=True
     )
     otp_verified_at = models.DateTimeField(
         "Einmalpasswort bestätigt am", null=True, blank=True

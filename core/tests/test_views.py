@@ -303,8 +303,12 @@ class SubmissionAndPoolViewTests(TestCase):
             username="pool-test-admin", password="test-pass-123"
         )
         self.client.force_login(manager)
-        first_pool = QuestionPool.objects.create(name="Einstellungstest Web")
-        second_pool = QuestionPool.objects.create(name="Sergeant-Test Web")
+        first_pool = QuestionPool.objects.create(
+            name="Einstellungstest Web", test_question_count=1
+        )
+        second_pool = QuestionPool.objects.create(
+            name="Sergeant-Test Web", test_question_count=1
+        )
         Question.objects.create(
             question_pool=first_pool,
             text="Nur Einstellung",
@@ -326,6 +330,7 @@ class SubmissionAndPoolViewTests(TestCase):
             {
                 "question_pool": str(second_pool.pk),
                 "question_count": "1",
+                "time_limit_minutes": "30",
             },
         )
         self.assertEqual(response.status_code, 200)
@@ -348,8 +353,10 @@ class SubmissionAndPoolViewTests(TestCase):
             {
                 "name": "Sergeant-Auswahl",
                 "description": "Aufstiegstest",
-                "minimum_test_questions": "1",
-                "maximum_test_questions": "10",
+                "test_question_count": "10",
+                "pass_percentage": "50",
+                "minimum_time_limit_minutes": "5",
+                "maximum_time_limit_minutes": "120",
             },
         )
         self.assertRedirects(response, reverse("pools_dashboard"))
@@ -366,8 +373,10 @@ class SubmissionAndPoolViewTests(TestCase):
             {
                 "name": "Sergeant-Test",
                 "description": "Aufstiegstest",
-                "minimum_test_questions": "1",
-                "maximum_test_questions": "10",
+                "test_question_count": "10",
+                "pass_percentage": "50",
+                "minimum_time_limit_minutes": "5",
+                "maximum_time_limit_minutes": "120",
             },
         )
         self.assertRedirects(response, reverse("pools_dashboard"))
@@ -618,7 +627,7 @@ class StaffAndSettingsTests(TestCase):
         )
 
         question_pool = QuestionPool.objects.create(
-            name="Fragenlimit", minimum_test_questions=2, maximum_test_questions=3
+            name="Fragenlimit", test_question_count=2
         )
         Question.objects.create(
             question_pool=question_pool,
@@ -637,22 +646,24 @@ class StaffAndSettingsTests(TestCase):
         self.assertContains(settings_page, "data-original-privacy")
         response = self.client.post(
             reverse("generate_test"),
-            {"question_pool": str(question_pool.pk)},
+            {"question_pool": str(question_pool.pk), "time_limit_minutes": "10"},
         )
-        self.assertContains(response, "Spanne dieses Pools")
+        self.assertContains(response, "feste Fragenzahl")
         self.assertFalse(TestSession.objects.filter(question_pool=question_pool).exists())
         response = self.client.post(
             reverse("pool_edit", args=[question_pool.pk]),
             {
                 "name": "Fragenlimit",
                 "description": "",
-                "minimum_test_questions": "5",
-                "maximum_test_questions": "2",
+                "test_question_count": "1",
+                "pass_percentage": "50",
+                "minimum_time_limit_minutes": "50",
+                "maximum_time_limit_minutes": "20",
             },
         )
         self.assertEqual(response.status_code, 200)
         question_pool.refresh_from_db()
-        self.assertEqual(question_pool.minimum_test_questions, 2)
+        self.assertEqual(question_pool.test_question_count, 2)
         response = self.client.post(
             reverse("tool_settings"),
             {

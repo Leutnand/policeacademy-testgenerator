@@ -386,6 +386,16 @@ tbody tr:hover {
   color: #e9c48c;
 }
 
+.status-pill.failed {
+  background: #f6dcdc;
+  color: #8a2b2b;
+}
+
+:root[data-theme="dark"] .status-pill.failed {
+  background: #4a2626;
+  color: #f0a8a8;
+}
+
 .row-actions {
   display: flex;
   justify-content: flex-end;

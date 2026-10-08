@@ -22,7 +22,9 @@ Fragen werden einem benannten Fragenpool zugeordnet, zum Beispiel **Einstellungs
 
 Bei der Testgenerierung muss zuerst der Prüfungstyp gewählt werden. Alle verankerten Fragen und die zufällige Ergänzung kommen ausschließlich aus diesem Pool. Auch der erzeugte Test speichert den verwendeten Pool; er erscheint in der Ergebnisübersicht und Detailauswertung. Bestehende Fragen und Testläufe werden bei der Migration dem initialen Pool **Einstellungstest** zugewiesen.
 
-Pro Fragenpool werden beim Anlegen oder Bearbeiten eine Mindest- und Höchstzahl an Fragen festgelegt. Beim Erzeugen eines Tests wird die Fragenzahl nicht mehr eingegeben, sondern zufällig innerhalb dieser Spanne gewählt (begrenzt durch die Poolgröße; angeheftete Fragen sind immer enthalten).
+Pro Fragenpool wird beim Anlegen oder Bearbeiten eine feste Fragenzahl festgelegt; jeder Test enthält exakt so viele Fragen (angeheftete Fragen sind immer enthalten, die Zahl muss zwischen deren Anzahl und der Poolgröße liegen). Zusätzlich lassen sich je Pool eine Bestehgrenze in Prozent sowie ein minimales und maximales Zeitlimit festlegen. Beim Erzeugen eines Tests ist ein Zeitlimit Pflicht und muss innerhalb dieser Grenzen liegen.
+
+In der Ergebnisübersicht und Detailauswertung wird zusätzlich der Prozentwert (erreichte Punkte ÷ maximale Punkte × 100, kaufmännisch auf ganze Zahlen gerundet) sowie „Bestanden“ / „Nicht bestanden“ anhand der bei der Testerstellung gültigen Bestehgrenze des Pools angezeigt.
 
 Bei einer Auswahlfrage werden pro Zeile Antworttext und Korrekt-Markierung gepflegt. Single Choice verlangt genau eine richtige Antwort, Multiple Choice mindestens eine richtige Antwort. Im Datensatz sieht die interne Darstellung beispielsweise so aus:
 

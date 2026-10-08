@@ -19,7 +19,9 @@
   </div>
   <section class="result-scoreboard">
     <div><span class="section-kicker">GESAMTPUNKTZAHL</span><strong>{{ earned }} <small>/ {{ possible }}</small></strong></div>
-    <div><span class="section-kicker">BEARBEITUNGSZEIT</span><strong>{{ test.time_taken_display }}{% if test.elapsed_seconds is not None %} <small>min</small>{% endif %}</strong>{% if test.time_limit_minutes %}<span class="muted small-text">Zeitlimit: {{ test.time_limit_minutes }} Minuten</span>{% else %}<span class="muted small-text">Kein Zeitlimit</span>{% endif %}</div>
+    <div class="score-cell"><span class="section-kicker">PROZENTBEWERTUNG</span><strong>{{ result.percent }} <small>%</small></strong><span class="muted small-text">Bestehgrenze: {{ result.pass_percentage }} %</span></div>
+    <div class="score-cell"><span class="section-kicker">BEURTEILUNG</span><div>{% if result.passed %}<span class="status-pill active">Bestanden</span>{% else %}<span class="status-pill failed">Nicht bestanden</span>{% endif %}</div></div>
+    <div class="score-cell"><span class="section-kicker">BEARBEITUNGSZEIT</span><strong>{{ test.time_taken_display }}{% if test.elapsed_seconds is not None %} <small>min</small>{% endif %}</strong>{% if test.time_limit_minutes %}<span class="muted small-text">Zeitlimit: {{ test.time_limit_minutes }} Minuten</span>{% else %}<span class="muted small-text">Kein Zeitlimit</span>{% endif %}</div>
     <div class="scoreboard-status">{% if pending %}<span class="status-pill pending">{{ pending }} Korrektur{{ pending|pluralize:'en' }} offen</span>{% else %}<span class="status-pill active">Alle Antworten bewertet</span>{% endif %}</div>
   </section>
   {% if can_grade_submissions %}

@@ -2,7 +2,7 @@
 
 import secrets
 import string
-from decimal import Decimal
+from decimal import ROUND_HALF_UP, Decimal
 from django.contrib.auth.hashers import make_password
 from django.db import transaction
 from .models import Question, QuestionPool, TestQuestion, TestSession
@@ -15,7 +15,7 @@ class TestGenerationError(ValueError):
 def generate_test(question_count, creator, question_pool):
     """Wählt Fragen ausschließlich aus dem gewählten Prüfungstyp aus.
 
-    Ohne explizite Anzahl wird zufällig eine Zahl innerhalb der Spanne des Pools gewählt.
+    Ohne explizite Anzahl gilt die feste Fragenzahl des Pools.
     """
     if not isinstance(question_pool, QuestionPool):
         raise TestGenerationError("Wähle zuerst einen gültigen Fragenpool aus.")
@@ -25,17 +25,11 @@ def generate_test(question_count, creator, question_pool):
     if not pool:
         raise TestGenerationError("Dieser Fragenpool enthält noch keine Fragen.")
     if question_count is None:
-        lowest = max(question_pool.minimum_test_questions, len(pinned), 1)
-        highest = min(question_pool.maximum_test_questions, len(pool))
-        if lowest > highest:
-            raise TestGenerationError(
-                "Die Fragenzahl-Spanne dieses Pools passt nicht zu seinen verankerten Fragen "
-                "und seiner Größe. Bitte Minimum und Maximum des Pools anpassen."
-            )
-        question_count = secrets.SystemRandom().randint(lowest, highest)
+        question_count = question_pool.test_question_count
     if question_count < 1 or question_count < len(pinned) or question_count > len(pool):
         raise TestGenerationError(
-            "Die Anzahl muss alle verankerten Fragen enthalten und darf den gewählten Pool nicht überschreiten."
+            f"Die feste Fragenzahl des Pools ({question_count}) muss alle verankerten Fragen "
+            f"({len(pinned)}) enthalten und darf die Poolgröße ({len(pool)}) nicht überschreiten."
         )
     selected = pinned + secrets.SystemRandom().sample(
         other, question_count - len(pinned)
@@ -43,7 +37,10 @@ def generate_test(question_count, creator, question_pool):
     otp = "".join(secrets.choice(string.digits) for _ in range(6))
     with transaction.atomic():
         test = TestSession.objects.create(
-            otp_hash=make_password(otp), created_by=creator, question_pool=question_pool
+            otp_hash=make_password(otp),
+            created_by=creator,
+            question_pool=question_pool,
+            pass_percentage=question_pool.pass_percentage,
         )
         TestQuestion.objects.bulk_create(
             [
@@ -61,6 +58,25 @@ def generate_test(question_count, creator, question_pool):
             ]
         )
     return test, otp
+
+
+def score_percentage(earned, possible):
+    """Berechnet erreichte/maximale Punkte in Prozent, kaufmännisch auf ganze Zahlen gerundet."""
+    if not possible:
+        return 0
+    value = Decimal(earned) / Decimal(possible) * 100
+    return int(value.quantize(Decimal("1"), rounding=ROUND_HALF_UP))
+
+
+def evaluate_result(test, earned, possible):
+    """Liefert Prozentwert und Bestehensstatus anhand der bei Erstellung gültigen Grenze."""
+    percent = score_percentage(earned, possible)
+    threshold = (
+        test.pass_percentage
+        if test.pass_percentage is not None
+        else test.question_pool.pass_percentage
+    )
+    return {"percent": percent, "pass_percentage": threshold, "passed": percent >= threshold}
 
 
 def grade_answer(test_question, answer):

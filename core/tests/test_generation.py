@@ -1,5 +1,6 @@
 """Tests zur Testgenerierung."""
 
+from decimal import Decimal
 from django.contrib.auth import get_user_model
 from django.contrib.auth.hashers import check_password
 from django.contrib.auth.models import Permission
@@ -7,7 +8,7 @@ from django.test import TestCase
 from django.urls import reverse
 from ..models import Question, QuestionPool, TestSession
 from ..permissions import has_pool_access, pool_permission_codename
-from ..services import TestGenerationError, generate_test
+from ..services import TestGenerationError, generate_test, score_percentage
 
 
 class TestGenerationTests(TestCase):
@@ -60,21 +61,30 @@ class TestGenerationTests(TestCase):
         self.assertTrue(check_password(otp, test.otp_hash))
         self.assertEqual(test.question_pool, self.question_pool)
 
-    def test_question_count_is_random_within_pool_range(self):
-        """Ohne Angabe liegt die Fragenzahl innerhalb der Spanne des Pools."""
-        self.question_pool.minimum_test_questions = 3
-        self.question_pool.maximum_test_questions = 4
+    def test_question_count_is_fixed_per_pool(self):
+        """Ohne Angabe erhält jeder Test exakt die feste Fragenzahl des Pools."""
+        self.question_pool.test_question_count = 4
         self.question_pool.save()
         counts = {
             generate_test(None, self.user, self.question_pool)[0].items.count()
-            for _ in range(30)
+            for _ in range(10)
         }
-        self.assertTrue(counts <= {3, 4})
-        self.question_pool.minimum_test_questions = 4
-        self.question_pool.maximum_test_questions = 4
+        self.assertEqual(counts, {4})
+
+    def test_pass_percentage_is_snapshotted_on_test(self):
+        """Die Bestehgrenze des Pools wird beim Erzeugen am Test festgehalten."""
+        self.question_pool.test_question_count = 3
+        self.question_pool.pass_percentage = 65
         self.question_pool.save()
         test, _otp = generate_test(None, self.user, self.question_pool)
-        self.assertEqual(test.items.count(), 4)
+        self.assertEqual(test.pass_percentage, 65)
+
+    def test_percentage_rounds_half_up(self):
+        """0,5 rundet auf, 0,49 ab; Fragenzahl spielt keine Rolle."""
+        self.assertEqual(score_percentage(Decimal("42"), Decimal("49.5")), 85)
+        self.assertEqual(score_percentage(Decimal("84.49"), Decimal("100")), 84)
+        self.assertEqual(score_percentage(Decimal("84.5"), Decimal("100")), 85)
+        self.assertEqual(score_percentage(Decimal("0"), Decimal("0")), 0)
 
     def test_invalid_question_count_is_rejected(self):
         """Unmögliche Testumfänge werden fachlich abgewiesen."""
@@ -90,7 +100,16 @@ class TestGenerationTests(TestCase):
             email="timed@example.com",
             password="strong-password",
         )
+        self.question_pool.test_question_count = 3
+        self.question_pool.save()
         self.client.force_login(administrator)
+        for invalid in ("", "2", "1000"):
+            response = self.client.post(
+                reverse("generate_test"),
+                {"question_pool": self.question_pool.pk, "time_limit_minutes": invalid},
+            )
+            self.assertFalse(TestSession.objects.filter(created_by=administrator).exists())
+            self.assertContains(response, "field-error")
         response = self.client.post(
             reverse("generate_test"),
             {"question_pool": self.question_pool.pk, "time_limit_minutes": 10},

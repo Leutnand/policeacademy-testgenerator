@@ -39,7 +39,9 @@
           <th>Abgegeben</th>
           <th>Dauer</th>
           <th>Punktestand</th>
-          <th>Korrekturstatus</th>
+          <th title="Prozentbewertung">%</th>
+          <th>Beurteilung</th>
+          <th>Status</th>
           <th></th>
         </tr>
       </thead>
@@ -50,24 +52,28 @@
               <a class="test-id-link"
                  href="{% url 'submission_detail' summary.test.pk %}{% if filter_query %}?{{ filter_query }}{% endif %}"><code>{{ summary.test.pk }}</code></a>
             </td>
-            <td>
+            <td class="nowrap-cell">
               <span class="type-label">{{ summary.test.question_pool.name }}</span>
             </td>
             <td class="question-title">{{ summary.test.examinee_name|default:'Name fehlt' }}</td>
-            <td>{{ summary.test.completed_at|date:'d.m.Y H:i' }}</td>
-            <td>
+            <td class="nowrap-cell">{{ summary.test.completed_at|date:'d.m.Y H:i' }}</td>
+            <td class="nowrap-cell">
               <strong>{{ summary.test.time_taken_display }}</strong>
               {% if summary.test.time_limit_minutes %}
                 <small class="muted">/ {{ summary.test.time_limit_minutes }} min</small>
               {% endif %}
             </td>
-            <td><strong>{{ summary.earned }} / {{ summary.possible }}</strong></td>
+            <td class="nowrap-cell"><strong>{{ summary.earned }} / {{ summary.possible }}</strong></td>
+            <td class="nowrap-cell"><strong>{{ summary.percent }} %</strong></td>
+            <td class="nowrap-cell">{% if summary.passed %}<span class="status-pill active">Bestanden</span>{% else %}<span class="status-pill failed">Nicht bestanden</span>{% endif %}</td>
             <td>
               {% if summary.pending %}<span class="status-pill pending">{{ summary.pending }} offen</span>{% else %}<span class="status-pill active">Ausgewertet</span>{% endif %}
             </td>
             <td class="row-actions">
-              <a class="button quiet small"
-                 href="{% url 'submission_detail' summary.test.pk %}{% if filter_query %}?{{ filter_query }}{% endif %}">Öffnen <span aria-hidden="true">→</span></a>{% if can_delete_tests %}
+              <a class="icon-link"
+                 aria-label="Öffnen"
+                 title="Öffnen"
+                 href="{% url 'submission_detail' summary.test.pk %}{% if filter_query %}?{{ filter_query }}{% endif %}"><svg aria-hidden="true" viewBox="0 0 24 24" focusable="false"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12ZM12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6Z" /></svg></a>{% if can_delete_tests %}
                 <form method="post"
                       action="{% url 'delete_test' summary.test.pk %}"
                       onsubmit="
@@ -86,7 +92,7 @@
           </tr>
         {% empty %}
           <tr>
-            <td colspan="8" class="empty-state">
+            <td colspan="10" class="empty-state">
               {% if selected_pool %}In „{{ selected_pool.name }}“ wurden noch keine
                 Tests abgegeben.{% else %}Noch keine Tests abgegeben.{% endif %}
             </td>

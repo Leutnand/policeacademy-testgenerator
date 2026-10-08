@@ -100,7 +100,16 @@ document.addEventListener('DOMContentLoaded', () => {
     poolSummary.textContent = `${selectedOption.textContent.trim()}: ${questionCount} Fragen · ${pinnedCount} davon verankert`;
     const rangeNote = document.querySelector('#selected-pool-range');
     if (rangeNote) {
-      rangeNote.textContent = `Zufällig ${selectedOption.dataset.minQuestions} bis ${selectedOption.dataset.maxQuestions} Fragen (Spanne dieses Pools); verankerte Fragen sind immer enthalten.`;
+      rangeNote.textContent = `Genau ${selectedOption.dataset.questionCountFixed} Fragen (feste Anzahl dieses Pools); verankerte Fragen sind immer enthalten.`;
+    }
+    const timeNote = document.querySelector('#selected-pool-time');
+    const timeInput = document.querySelector('#id_time_limit_minutes');
+    if (timeNote) {
+      timeNote.textContent = `Pflichtangabe innerhalb der Grenzen des gewählten Pools. Erlaubt: ${selectedOption.dataset.minTime} bis ${selectedOption.dataset.maxTime} Minuten.`;
+    }
+    if (timeInput) {
+      timeInput.min = selectedOption.dataset.minTime;
+      timeInput.max = selectedOption.dataset.maxTime;
     }
   });
 

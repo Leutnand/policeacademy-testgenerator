@@ -24,7 +24,12 @@ from ..models import (
     TestSession,
 )
 from ..permissions import accessible_pools, has_pool_access, is_administrator
-from ..services import TestGenerationError, generate_test, grade_answer
+from ..services import (
+    TestGenerationError,
+    evaluate_result,
+    generate_test,
+    grade_answer,
+)
 from .common import require_capability, _query_without_page, _parse_filter_date
 
 
@@ -422,7 +427,13 @@ def submissions(request):
         )["total"] or Decimal("0")
         pending = test.submissions.filter(needs_manual_grading=True).count()
         summaries.append(
-            {"test": test, "possible": possible, "earned": earned, "pending": pending}
+            {
+                "test": test,
+                "possible": possible,
+                "earned": earned,
+                "pending": pending,
+                **evaluate_result(test, earned, possible),
+            }
         )
     return render(
         request,
@@ -610,6 +621,7 @@ def submission_detail(request, test_id):
             "possible": possible,
             "earned": earned,
             "pending": pending,
+            "result": evaluate_result(test, earned, possible),
             "can_grade_submissions": can_grade_submissions,
             "score_values": score_values,
             "filter_query": filter_query,

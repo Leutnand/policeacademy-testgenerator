@@ -178,9 +178,27 @@
   border-radius: 6px;
 }
 
-.result-scoreboard>div:first-child {
+.result-scoreboard>div:first-child,
+.result-scoreboard>div.score-cell {
   display: grid;
   gap: 6px;
+}
+
+.result-scoreboard {
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: 22px 44px;
+  justify-content: space-between;
+}
+
+.result-scoreboard .scoreboard-status {
+  align-self: center;
+}
+
+.nowrap-cell,
+.nowrap-cell .status-pill,
+.nowrap-cell .type-label {
+  white-space: nowrap;
 }
 
 .result-scoreboard strong {

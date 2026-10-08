@@ -2,7 +2,6 @@
 
 from django import forms
 from django.core.files.uploadedfile import UploadedFile
-from django.core.validators import MaxValueValidator, MinValueValidator
 from django.contrib.auth.models import Group, Permission, User
 from django.db.models import Max, Q, Value
 from django.db.models.functions import Coalesce
@@ -606,13 +605,24 @@ class GenerateTestForm(forms.Form):
     time_limit_minutes = forms.IntegerField(
         label="Maximale Testdauer in Minuten",
         min_value=1,
-        max_value=1440,
-        required=False,
-        widget=forms.NumberInput(
-            attrs={"min": 1, "max": 1440, "placeholder": "Kein Zeitlimit"}
-        ),
-        help_text="Optional. Ohne Angabe läuft der Test ohne Zeitlimit.",
+        widget=forms.NumberInput(attrs={"min": 1}),
+        help_text="Pflichtangabe innerhalb der Grenzen des gewählten Pools.",
     )
+
+    def clean(self):
+        """Prüft das Zeitlimit gegen die Grenzen des gewählten Fragenpools."""
+        cleaned = super().clean()
+        pool = cleaned.get("question_pool")
+        minutes = cleaned.get("time_limit_minutes")
+        if pool and minutes is not None:
+            lowest = pool.minimum_time_limit_minutes
+            highest = pool.maximum_time_limit_minutes
+            if not lowest <= minutes <= highest:
+                self.add_error(
+                    "time_limit_minutes",
+                    f"Das Zeitlimit muss für diesen Pool zwischen {lowest} und {highest} Minuten liegen.",
+                )
+        return cleaned
 
     def __init__(self, *args, **kwargs):
         """Bietet nur autorisierte Pools an und wählt den ersten davon vor."""
@@ -659,38 +669,47 @@ class QuestionPoolForm(forms.ModelForm):
     """Erstellt und bearbeitet benannte Prüfungstypen/Fragenpools."""
 
     class Meta:
-        """Beschränkt Poolpflege auf Namen, Beschreibung und Fragenzahl-Spanne."""
+        """Beschränkt Poolpflege auf Namen, Beschreibung und Testparameter."""
 
         model = QuestionPool
         fields = (
             "name",
             "description",
-            "minimum_test_questions",
-            "maximum_test_questions",
+            "test_question_count",
+            "pass_percentage",
+            "minimum_time_limit_minutes",
+            "maximum_time_limit_minutes",
         )
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        for field_name in ("minimum_test_questions", "maximum_test_questions"):
-            self.fields[field_name].min_value = 1
-            self.fields[field_name].validators.append(
-                MinValueValidator(
-                    1, message="Die Fragenzahl muss mindestens 1 betragen."
-                )
-            )
-            self.fields[field_name].widget.attrs["min"] = 1
-        self.fields["minimum_test_questions"].help_text = (
-            "Jeder Test aus diesem Pool enthält zufällig zwischen Minimum und Maximum Fragen."
+        self.fields["test_question_count"].widget.attrs["min"] = 1
+        self.fields["test_question_count"].help_text = (
+            "Jeder Test aus diesem Pool enthält genau diese Anzahl an Fragen."
+        )
+        self.fields["pass_percentage"].widget.attrs.update({"min": 0, "max": 100})
+        self.fields["pass_percentage"].help_text = (
+            "Mindestprozentwert (0 bis 100), ab dem ein Test als bestanden gilt."
+        )
+        for field_name in ("minimum_time_limit_minutes", "maximum_time_limit_minutes"):
+            self.fields[field_name].widget.attrs.update({"min": 1, "max": 1440})
+        self.fields["minimum_time_limit_minutes"].help_text = (
+            "Grenzen für das Zeitlimit, das beim Erstellen eines Tests eingegeben wird."
         )
 
     def clean(self):
         cleaned = super().clean()
-        minimum = cleaned.get("minimum_test_questions")
-        maximum = cleaned.get("maximum_test_questions")
+        minimum = cleaned.get("minimum_time_limit_minutes")
+        maximum = cleaned.get("maximum_time_limit_minutes")
+        if maximum is not None and maximum > 1440:
+            self.add_error(
+                "maximum_time_limit_minutes",
+                "Das maximale Zeitlimit darf höchstens 1.440 Minuten betragen.",
+            )
         if minimum is not None and maximum is not None and minimum > maximum:
             self.add_error(
-                "maximum_test_questions",
-                "Die maximale Fragenzahl muss mindestens der minimalen Fragenzahl entsprechen.",
+                "maximum_time_limit_minutes",
+                "Das maximale Zeitlimit muss mindestens dem minimalen Zeitlimit entsprechen.",
             )
         return cleaned
 
