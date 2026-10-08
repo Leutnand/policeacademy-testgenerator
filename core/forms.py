@@ -4,7 +4,8 @@ from django import forms
 from django.core.files.uploadedfile import UploadedFile
 from django.core.validators import MaxValueValidator, MinValueValidator
 from django.contrib.auth.models import Group, Permission, User
-from django.db.models import Max, Q
+from django.db.models import Max, Q, Value
+from django.db.models.functions import Coalesce
 from .models import PermissionGroupSortOrder, Question, QuestionPool, ToolSettings
 from .permissions import (
     ADMINISTRATOR_GROUP,
@@ -287,7 +288,9 @@ class StaffUserForm(forms.ModelForm):
     )
     groups = forms.ModelMultipleChoiceField(
         label="Rechtegruppen",
-        queryset=Group.objects.exclude(name=ADMINISTRATOR_GROUP),
+        queryset=Group.objects.exclude(name=ADMINISTRATOR_GROUP)
+        .annotate(display_order=Coalesce("sort_config__sort_order", Value(0)))
+        .order_by("display_order", "name"),
         required=False,
         widget=forms.CheckboxSelectMultiple,
     )
