@@ -46,17 +46,8 @@
     display: none;
   }
 
-  .academy-ribbon {
-    min-height: 34px;
-    font-size: 9px;
-  }
-
-  .academy-ribbon>div {
-    gap: 6px;
-  }
-
   .page-shell {
-    min-height: calc(100vh - 220px);
+    min-height: calc(100vh - 186px);
     padding: 34px 18px 54px;
   }
 
@@ -429,11 +420,6 @@
 
   .nav-actions .text-button {
     font-size: 11px;
-  }
-
-  .academy-ribbon {
-    padding-right: 14px;
-    padding-left: 14px;
   }
 
   .page-shell {

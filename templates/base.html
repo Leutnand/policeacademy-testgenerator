@@ -51,9 +51,6 @@
         {% if user.is_authenticated %}<span class="user-label"><small>ACADEMY STAFF</small><strong>{{ user.get_short_name|default:user.username }}</strong></span><form method="post" action="{% url 'logout' %}">{% csrf_token %}<button class="text-button" type="submit">Abmelden <span aria-hidden="true">↗</span></button></form>{% endif %}
       </div>
     </header>
-    <div class="academy-ribbon">
-      <div><span class="ribbon-star">★</span><span>TRAINING DIVISION</span><span class="ribbon-divider">/</span><span>PERSONNEL &amp; STANDARDS</span></div>
-    </div>
     <main class="page-shell">
       {% if messages %}<div class="messages">{% for message in messages %}<div class="message {{ message.tags }}">{{ message }}</div>{% endfor %}</div>{% endif %}
       {% if request.resolver_match.url_name == "users_dashboard" or request.resolver_match.url_name == "user_create" or request.resolver_match.url_name == "user_edit" or request.resolver_match.url_name == "permissions_dashboard" or request.resolver_match.url_name == "permission_group_create" or request.resolver_match.url_name == "permission_group_edit" or request.resolver_match.url_name == "permission_user_edit" or request.resolver_match.url_name == "tool_settings" %}<nav class="personnel-tabs" aria-label="Einstellungen">{% if can_manage_users %}<a class="{% if request.resolver_match.url_name == 'users_dashboard' or request.resolver_match.url_name == 'user_create' or request.resolver_match.url_name == 'user_edit' or request.resolver_match.url_name == 'permission_user_edit' %}active{% endif %}"
