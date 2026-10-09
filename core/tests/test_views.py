@@ -90,7 +90,7 @@ class SubmissionAndPoolViewTests(TestCase):
             text="Ergebnisfrage",
             question_type=Question.Type.SHORT,
             points=2,
-            answer_key="ja",
+            answer_key="Erwartete Musterlösung",
         )
         Submission.objects.create(
             test=test, test_question=question, answer={"value": "ja"}, score=2
@@ -104,6 +104,8 @@ class SubmissionAndPoolViewTests(TestCase):
         detail_url = reverse("submission_detail", args=[test.pk])
         response = self.client.get(detail_url)
         self.assertContains(response, "Ergebnisfrage")
+        self.assertContains(response, "Musterlösung")
+        self.assertContains(response, "Erwartete Musterlösung")
         self.assertContains(response, f'name="score_{test.submissions.get().pk}"')
         self.assertContains(response, 'value="2.00"')
         response = self.client.post(
@@ -235,6 +237,8 @@ class SubmissionAndPoolViewTests(TestCase):
         self.assertContains(response, "Angekreuzt · Falsch")
         self.assertContains(response, 'data-selection="selected"')
         self.assertContains(response, 'data-selection="not-selected"')
+        self.assertContains(response, ">✓</span>")
+        self.assertContains(response, ">×</span>")
 
     def test_question_form_accepts_rows_and_ignores_options_for_text_questions(self):
         """Auswahlantworten werden strukturiert gespeichert und Freitext bleibt optionsfrei."""

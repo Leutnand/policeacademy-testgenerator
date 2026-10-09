@@ -52,7 +52,7 @@
                      data-selection="{% if option.selected %}selected{% else %}not-selected{% endif %}"
                      data-correct="{{ option.correct|yesno:'true,false' }}">
                   <span class="choice-review-mark"
-                        aria-hidden="true">{% if option.selected %}✓{% else %}○{% endif %}</span>
+                        aria-hidden="true">{% if option.correct %}✓{% elif option.selected %}×{% else %}○{% endif %}</span>
                   <span class="choice-review-text">{{ option.text }}</span>
                   <span class="choice-review-status">{% if option.selected and option.correct %}Angekreuzt · Richtig{% elif option.selected %}Angekreuzt · Falsch{% elif option.correct %}Nicht angekreuzt · Richtige Antwort{% else %}Nicht angekreuzt{% endif %}</span>
                 </div>
@@ -61,6 +61,17 @@
             <div class="choice-review-legend"><span><i class="legend-correct"></i> Richtig</span><span><i class="legend-incorrect"></i> Falsche Auswahl</span><span><i class="legend-missed"></i> Ausgelassen</span></div>
           {% else %}<p>{{ answer.answer_text|default:'Keine Antwort' }}</p>{% endif %}
         </div>
+        {% if answer.test_question.answer_key %}
+          <div class="review-model-answer">
+            <div class="review-model-answer-heading">
+              <span class="review-model-answer-icon" aria-hidden="true">✓</span>
+              <div>
+                <strong>Musterlösung</strong>
+              </div>
+            </div>
+            <p>{{ answer.test_question.answer_key }}</p>
+          </div>
+        {% endif %}
         {% if can_grade_submissions %}
           <div class="review-grade-form">
             <label for="score-{{ answer.pk }}">Erreichte Punkte</label>

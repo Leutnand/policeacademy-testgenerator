@@ -250,6 +250,56 @@
   line-height: 1.6;
 }
 
+.review-model-answer {
+  margin: 0 0 18px 44px;
+  padding: 15px 18px;
+  background: color-mix(in srgb, var(--surface-soft) 48%, var(--surface));
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--green);
+  border-radius: 6px;
+}
+
+.review-model-answer-heading {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+}
+
+.review-model-answer-icon {
+  display: grid;
+  place-items: center;
+  flex: 0 0 30px;
+  width: 30px;
+  height: 30px;
+  color: var(--surface);
+  background: var(--green);
+  border-radius: 50%;
+  font-size: 15px;
+  font-weight: 800;
+}
+
+.review-model-answer-heading>div {
+  display: grid;
+  gap: 2px;
+}
+
+.review-model-answer-heading strong {
+  font:
+    700 13px Manrope,
+    sans-serif;
+}
+
+.review-model-answer-heading>div>span {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.review-model-answer p {
+  margin: 12px 0 0 41px;
+  white-space: pre-wrap;
+  line-height: 1.6;
+}
+
 .review-grade-form {
   margin-left: 44px;
   padding-top: 16px;
@@ -339,6 +389,7 @@
   }
 
   .review-answer,
+  .review-model-answer,
   .review-grade-form {
     margin-left: 0;
   }
