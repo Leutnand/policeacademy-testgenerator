@@ -40,7 +40,8 @@ class QuestionPool(models.Model):
         "Infotext vor Testbeginn",
         blank=True,
         help_text=(
-            "Optionaler längerer Text, der vor Testbeginn angezeigt wird. Der Prüfling "
+            "Optionaler längerer Text, der vor Testbeginn angezeigt wird. Links: "
+            "[Text](https://…) oder einfach die URL einfügen. Der Prüfling "
             "bestätigt ihn mit einer Checkbox „Gelesen und verstanden“."
         ),
     )
