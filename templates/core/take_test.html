@@ -36,6 +36,15 @@
       .exam-form .answer-input { -webkit-user-select: text; user-select: text; }
       @media print { body { display: none !important; } }
     </style>
+    <style>
+      .exam-watermark { position: fixed; inset: 0; z-index: 900; pointer-events: none; overflow: hidden; opacity: .008; display: flex; flex-wrap: wrap; align-content: flex-start; gap: 90px 70px; transform: rotate(-25deg) scale(1.6); transform-origin: center; }
+      .exam-watermark span { font-size: .8rem; font-weight: 400; white-space: nowrap; }
+      .exam-form.is-obscured, .exam-header.is-obscured { filter: blur(18px); pointer-events: none; }
+      .exam-obscure-note { display: none; position: fixed; inset: 0; z-index: 1100; align-items: center; justify-content: center; text-align: center; padding: 2rem; background: rgba(0,0,0,.55); color: #fff; font-size: 1.2rem; }
+      .exam-obscure-note.is-visible { display: flex; }
+    </style>
+    <div class="exam-watermark" aria-hidden="true" id="exam-watermark" data-text="{{ examinee_name }} · {{ test.pk }}"></div>
+    <div class="exam-obscure-note" id="exam-obscure-note" role="alert">Der Test ist ausgeblendet, solange dieses Fenster nicht aktiv ist.<br>Klicke ins Fenster, um fortzufahren. Screenshots sind untersagt.</div>
   <form method="post"
         class="exam-form"
         data-exam-form
@@ -125,6 +134,25 @@
       restoreAnswers();
       form.addEventListener("input", () => { hasChanges = true; saveAnswers(); });
       form.addEventListener("change", () => { hasChanges = true; saveAnswers(); });
+      const watermark = document.getElementById("exam-watermark");
+      const obscureNote = document.getElementById("exam-obscure-note");
+      const watermarkText = watermark.dataset.text;
+      const obscure = (on) => {
+        document.querySelectorAll(".exam-form, .exam-header").forEach((el) => el.classList.toggle("is-obscured", on));
+        obscureNote.classList.toggle("is-visible", on);
+      };
+      window.addEventListener("blur", () => obscure(true));
+      window.addEventListener("focus", () => obscure(false));
+      document.addEventListener("visibilitychange", () => obscure(document.hidden));
+      document.addEventListener("keyup", (event) => {
+        if (event.key === "PrintScreen") {
+          try { navigator.clipboard.writeText("Screenshots sind nicht erlaubt."); } catch (_) {}
+          obscure(true);
+          window.setTimeout(() => { if (document.hasFocus()) obscure(false); }, 1500);
+        }
+      });
+      watermark.innerHTML = Array.from({ length: 160 }, () => `<span></span>`).join("");
+      watermark.querySelectorAll("span").forEach((span) => { span.textContent = watermarkText; });
       const isAnswerField = (target) => target.closest && target.closest(".answer-input");
       for (const type of ["paste", "drop"]) {
         form.addEventListener(type, (event) => {

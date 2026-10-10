@@ -345,6 +345,7 @@ def take_test(request, test_id):
                 {
                     "test": test,
                     "questions": _public_questions(test),
+            "examinee_name": request.session.get(name_session_key, ""),
                     "remaining_seconds": (
                         max(1, math.ceil((deadline - timezone.now()).total_seconds()))
                         if deadline
@@ -365,6 +366,7 @@ def take_test(request, test_id):
         {
             "test": test,
             "questions": _public_questions(test),
+            "examinee_name": request.session.get(name_session_key, ""),
             "remaining_seconds": (
                 max(1, math.ceil((deadline - timezone.now()).total_seconds()))
                 if deadline
