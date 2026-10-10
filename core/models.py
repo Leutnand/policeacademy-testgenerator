@@ -36,7 +36,30 @@ class QuestionPool(models.Model):
         default=180,
         validators=[MinValueValidator(1)],
     )
+    start_info_text = models.TextField(
+        "Infotext vor Testbeginn",
+        blank=True,
+        help_text=(
+            "Optionaler längerer Text, der vor Testbeginn angezeigt wird. Der Prüfling "
+            "bestätigt ihn mit einer Checkbox „Gelesen und verstanden“."
+        ),
+    )
+    start_confirmations = models.TextField(
+        "Bestätigungen vor Testbeginn",
+        blank=True,
+        help_text=(
+            "Eine Aussage pro Zeile. Der Prüfling muss jede Aussage vor Testbeginn "
+            "bestätigen. Leer lassen, wenn keine Bestätigung nötig ist."
+        ),
+    )
     created_at = models.DateTimeField("Erstellt am", auto_now_add=True)
+
+    @property
+    def start_confirmation_list(self):
+        """Liefert die nicht leeren Bestätigungsaussagen."""
+        return [
+            line.strip() for line in self.start_confirmations.splitlines() if line.strip()
+        ]
 
     class Meta:
         """Sortiert Pools stabil und definiert die verbliebenen globalen Rechte."""

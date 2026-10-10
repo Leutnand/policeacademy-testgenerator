@@ -317,6 +317,7 @@ body {
   text-transform: uppercase;
 }
 
+.section-kicker,
 .eyebrow,
 .small-caps {
   display: flex;
@@ -328,10 +329,14 @@ body {
   text-transform: uppercase;
 }
 
-.section-kicker {
+.page-heading .section-kicker,
+.exam-access > .section-kicker,
+.completion > .section-kicker,
+.auth-panel .section-kicker {
   display: none;
 }
 
+:root[data-theme="dark"] .section-kicker,
 :root[data-theme="dark"] .small-caps {
   color: #e0c771;
 }

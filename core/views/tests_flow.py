@@ -237,6 +237,7 @@ def _finish_test(request, test, items, submitted_values, examinee_name, timed_ou
     )
     request.session.pop(f"test_access_{test.pk}", None)
     request.session.pop(f"test_name_{test.pk}", None)
+    request.session.pop(f"test_confirmed_{test.pk}", None)
     return True
 
 
@@ -284,6 +285,32 @@ def take_test(request, test_id):
             return redirect("take_test", test_id=test.pk)
         return render(
             request, "core/examinee_name.html", {"form": name_form, "test": test}
+        )
+    info_text = test.question_pool.start_info_text.strip()
+    confirmations = test.question_pool.start_confirmation_list
+    if info_text:
+        confirmations = [
+            "Ich habe den obigen Text gelesen und verstanden."
+        ] + confirmations
+    confirm_session_key = f"test_confirmed_{test.pk}"
+    if confirmations and not request.session.get(confirm_session_key):
+        if request.method == "POST":
+            posted = set(request.POST.getlist("confirm"))
+            if posted == {str(index) for index in range(len(confirmations))}:
+                request.session[confirm_session_key] = True
+                return redirect("take_test", test_id=test.pk)
+            missing = True
+        else:
+            missing = False
+        return render(
+            request,
+            "core/test_confirmations.html",
+            {
+                "test": test,
+                "info_text": info_text,
+                "confirmations": list(enumerate(confirmations)),
+                "missing": missing,
+            },
         )
     items = list(test.items.all())
     if test.started_at is None:

@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block title %}Angaben bestätigen{% endblock %}
+{% block content %}
+  <section class="exam-access">
+    <div class="section-kicker">POLICE ACADEMY / PRÜFUNGSZUGANG</div>
+    <span class="access-symbol">03</span>
+    <h1>Bitte bestätigen</h1>
+    <p class="muted">Bestätige alle Punkte, bevor der Test beginnt.</p>
+    {% if info_text %}<div class="privacy-note" style="white-space: pre-line; text-align: left;">{{ info_text }}</div>{% endif %}
+    <form method="post" class="stack-form access-form">
+      {% csrf_token %}
+      {% if missing %}<span class="field-error">Bitte bestätige alle Punkte.</span>{% endif %}
+      <div class="answer-options">
+        {% for index, text in confirmations %}
+          <label class="answer-option"><input type="checkbox" name="confirm" value="{{ index }}" required /><span class="check-custom"></span><span>{{ text }}</span></label>
+        {% endfor %}
+      </div>
+      <button class="button primary full" type="submit">Test starten <span aria-hidden="true">→</span></button>
+    </form>
+  </section>
+{% endblock %}

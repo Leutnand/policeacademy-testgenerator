@@ -11,6 +11,26 @@
                   data-remaining-milliseconds="{{ remaining_milliseconds }}"></strong></span>{% else %}<span>Einmaliger Zugang</span>{% endif %}
     </div>
   </section>
+  {% if remaining_seconds != None %}
+    <div class="exam-timer-bar" role="timer" aria-label="Verbleibende Zeit">
+      <div class="exam-timer-row">
+        <span class="exam-timer-label">⏱ Verbleibende Zeit</span><strong id="exam-countdown-float">--:--</strong>
+      </div>
+      <div class="exam-timer-track"><div class="exam-timer-fill" id="exam-timer-fill"></div></div>
+    </div>
+    <style>
+      .exam-timer-bar { position: -webkit-sticky; position: sticky; top: 0; z-index: 1000; max-width: 760px; margin: 0 auto 14px; padding: 10px 16px 8px; background: var(--surface); border: 1px solid var(--line); border-bottom: 3px solid var(--lapd-gold, #c9a227); border-radius: 0 0 8px 8px; box-shadow: 0 6px 18px rgba(0,0,0,.18); font-variant-numeric: tabular-nums; }
+      .exam-timer-row { display: flex; justify-content: space-between; align-items: baseline; gap: 1rem; }
+      .exam-timer-label { font-size: .75rem; text-transform: uppercase; letter-spacing: .08em; opacity: .75; }
+      .exam-timer-row strong { font-size: 1.7rem; line-height: 1.1; }
+      .exam-timer-track { height: 4px; margin-top: 6px; background: var(--surface-soft); border-radius: 2px; overflow: hidden; }
+      .exam-timer-fill { height: 100%; width: 100%; background: #2e7d32; transition: width .2s linear, background-color .3s; }
+      .exam-timer-bar.is-warning .exam-timer-fill { background: #d98e04; }
+      .exam-timer-bar.is-critical { border-bottom-color: #c62828; }
+      .exam-timer-bar.is-critical .exam-timer-fill { background: #c62828; }
+      .exam-timer-bar.is-critical strong { color: #c62828; }
+    </style>
+  {% endif %}
   <form method="post"
         class="exam-form"
         data-exam-form
@@ -100,7 +120,16 @@
       restoreAnswers();
       form.addEventListener("input", () => { hasChanges = true; saveAnswers(); });
       form.addEventListener("change", () => { hasChanges = true; saveAnswers(); });
-      form.addEventListener("submit", () => { submitting = true; });
+      form.addEventListener("keydown", (event) => {
+        if (event.key === "Enter" && event.target.tagName === "INPUT") event.preventDefault();
+      });
+      form.addEventListener("submit", (event) => {
+        if (!form.dataset.autoSubmit && !window.confirm("Möchtest du den Test wirklich abgeben? Danach sind keine Änderungen mehr möglich.")) {
+          event.preventDefault();
+          return;
+        }
+        submitting = true;
+      });
       window.addEventListener("beforeunload", (event) => {
         if (!hasChanges || submitting) return;
         event.preventDefault();
@@ -111,7 +140,11 @@
       (() => {
         const countdown = document.getElementById("exam-countdown");
         const form = document.querySelector("[data-exam-form]");
+        const floatTimer = document.getElementById("exam-countdown-float");
+        const floatBox = floatTimer.closest(".exam-timer-bar");
+        const fill = document.getElementById("exam-timer-fill");
         const totalMilliseconds = Number(countdown.dataset.remainingMilliseconds);
+        const fullMilliseconds = {{ test.time_limit_minutes|default:0 }} * 60000 || totalMilliseconds;
         const startedAt = performance.now();
         const update = () => {
           const remaining = Math.max(0, totalMilliseconds - (performance.now() - startedAt));
@@ -119,7 +152,12 @@
           const minutes = Math.floor(secondsLeft / 60);
           const seconds = secondsLeft % 60;
           countdown.textContent = `${minutes}:${String(seconds).padStart(2, "0")}`;
+          floatTimer.textContent = countdown.textContent;
+          fill.style.width = `${Math.min(100, (remaining / fullMilliseconds) * 100)}%`;
+          floatBox.classList.toggle("is-warning", secondsLeft <= 300 && secondsLeft > 60);
+          floatBox.classList.toggle("is-critical", secondsLeft <= 60);
           if (remaining <= 0) {
+            form.dataset.autoSubmit = "1";
             form.requestSubmit();
             return;
           }

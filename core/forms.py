@@ -679,10 +679,14 @@ class QuestionPoolForm(forms.ModelForm):
             "pass_percentage",
             "minimum_time_limit_minutes",
             "maximum_time_limit_minutes",
+            "start_info_text",
+            "start_confirmations",
         )
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self.fields["start_info_text"].widget.attrs["rows"] = 6
+        self.fields["start_confirmations"].widget.attrs["rows"] = 4
         self.fields["test_question_count"].widget.attrs["min"] = 1
         self.fields["test_question_count"].help_text = (
             "Jeder Test aus diesem Pool enthält genau diese Anzahl an Fragen."
