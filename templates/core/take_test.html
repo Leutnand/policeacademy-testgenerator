@@ -31,6 +31,11 @@
       .exam-timer-bar.is-critical strong { color: #c62828; }
     </style>
   {% endif %}
+    <style>
+      .exam-form, .exam-header { -webkit-user-select: none; user-select: none; }
+      .exam-form .answer-input { -webkit-user-select: text; user-select: text; }
+      @media print { body { display: none !important; } }
+    </style>
   <form method="post"
         class="exam-form"
         data-exam-form
@@ -120,6 +125,24 @@
       restoreAnswers();
       form.addEventListener("input", () => { hasChanges = true; saveAnswers(); });
       form.addEventListener("change", () => { hasChanges = true; saveAnswers(); });
+      const isAnswerField = (target) => target.closest && target.closest(".answer-input");
+      for (const type of ["paste", "drop"]) {
+        form.addEventListener(type, (event) => {
+          if (isAnswerField(event.target)) event.preventDefault();
+        });
+      }
+      for (const type of ["copy", "cut", "dragstart", "contextmenu"]) {
+        document.addEventListener(type, (event) => event.preventDefault());
+      }
+      document.addEventListener("keydown", (event) => {
+        const key = event.key.toLowerCase();
+        const mod = event.ctrlKey || event.metaKey;
+        if ((mod && ["c", "x", "a", "p"].includes(key) && !(key === "a" && isAnswerField(event.target))) ||
+            (mod && key === "v" && isAnswerField(event.target)) ||
+            (event.shiftKey && key === "insert") || key === "printscreen") {
+          event.preventDefault();
+        }
+      });
       form.addEventListener("keydown", (event) => {
         if (event.key === "Enter" && event.target.tagName === "INPUT") event.preventDefault();
       });
