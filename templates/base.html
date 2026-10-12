@@ -48,7 +48,7 @@
                 id="theme-toggle"
                 aria-label="Darstellung wechseln"
                 title="Darstellung wechseln"><span id="theme-icon">◐</span></button>
-        {% if user.is_authenticated %}<span class="user-label"><small>ACADEMY STAFF</small><strong>{{ user.get_short_name|default:user.username }}</strong></span><form method="post" action="{% url 'logout' %}">{% csrf_token %}<button class="text-button" type="submit">Abmelden <span aria-hidden="true">↗</span></button></form>{% endif %}
+        {% if user.is_authenticated %}<span class="user-label"><small>ACADEMY STAFF</small><strong>{{ user.username }}</strong></span><form method="post" action="{% url 'logout' %}">{% csrf_token %}<button class="text-button" type="submit">Abmelden <span aria-hidden="true">↗</span></button></form>{% endif %}
       </div>
     </header>
     <main class="page-shell">
