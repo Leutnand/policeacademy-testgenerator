@@ -121,6 +121,98 @@ class SubmissionAndPoolViewTests(TestCase):
         )
         self.assertContains(self.client.get(detail_url), 'value="1.25"')
 
+    def test_examinee_name_can_only_be_changed_with_its_own_pool_permission(self):
+        """Namenänderung ist gesondert berechtigt, protokolliert und zeigt sich sofort."""
+        user = get_user_model().objects.create_user(username="name-reviewer")
+        question_pool = QuestionPool.objects.create(name="Namensänderung")
+        submissions_permission = Permission.objects.get(
+            content_type__app_label="core",
+            codename=pool_permission_codename("submissions", question_pool),
+        )
+        rename_permission = Permission.objects.get(
+            content_type__app_label="core",
+            codename=pool_permission_codename("rename_examinee", question_pool),
+        )
+        user.user_permissions.add(submissions_permission)
+        test = TestSession.objects.create(
+            created_by=user,
+            question_pool=question_pool,
+            otp_hash=make_password("121212"),
+            examinee_name="Cadet Original",
+            status=TestSession.Status.COMPLETED,
+            completed_at=timezone.now(),
+        )
+        detail_url = reverse("submission_detail", args=[test.pk])
+        rename_url = reverse("rename_examinee", args=[test.pk])
+        self.client.force_login(user)
+        response = self.client.get(detail_url)
+        self.assertEqual(response.status_code, 200)
+        self.assertNotContains(response, "Prüflingsnamen ändern")
+        overview_url = reverse("submissions")
+        self.assertNotContains(self.client.get(overview_url), "Prüflingsnamen ändern")
+        self.assertEqual(
+            self.client.post(rename_url, {"examinee_name": "Cadet Updated"}).status_code,
+            403,
+        )
+        test.refresh_from_db()
+        self.assertEqual(test.examinee_name, "Cadet Original")
+        self.assertFalse(
+            AuditLog.objects.filter(action="submission.examinee_name_changed").exists()
+        )
+
+        user.user_permissions.add(rename_permission)
+        response = self.client.get(overview_url)
+        self.assertContains(response, "Prüflingsnamen ändern")
+        self.assertContains(response, f'action="{rename_url}"')
+        self.assertContains(response, f'value="{test.examinee_name}"')
+        response = self.client.post(
+            f"{rename_url}?pending=1", {"examinee_name": "Cadet Updated"}
+        )
+        self.assertRedirects(response, f"{overview_url}?pending=1")
+        test.refresh_from_db()
+        self.assertEqual(test.examinee_name, "Cadet Updated")
+        event = AuditLog.objects.get(action="submission.examinee_name_changed")
+        self.assertEqual(event.actor, user)
+        self.assertEqual(event.object_id, str(test.pk))
+        self.assertEqual(
+            event.metadata,
+            {"previous_name": "Cadet Original", "new_name": "Cadet Updated"},
+        )
+        self.assertContains(self.client.get(detail_url), "Cadet Updated")
+
+    def test_examinee_rename_permission_is_scoped_and_does_not_grant_result_access(self):
+        """Das Recht für einen anderen Pool erlaubt weder Lesen noch Ändern."""
+        user = get_user_model().objects.create_user(username="other-pool-renamer")
+        test_pool = QuestionPool.objects.create(name="Geschützter Pool")
+        other_pool = QuestionPool.objects.create(name="Anderer Pool")
+        user.user_permissions.add(
+            Permission.objects.get(
+                content_type__app_label="core",
+                codename=pool_permission_codename("rename_examinee", other_pool),
+            )
+        )
+        test = TestSession.objects.create(
+            question_pool=test_pool,
+            otp_hash=make_password("343434"),
+            examinee_name="Cadet Protected",
+            status=TestSession.Status.COMPLETED,
+            completed_at=timezone.now(),
+        )
+        self.client.force_login(user)
+        self.assertEqual(
+            self.client.get(reverse("submission_detail", args=[test.pk])).status_code,
+            403,
+        )
+        self.assertEqual(
+            self.client.post(
+                reverse("rename_examinee", args=[test.pk]),
+                {"examinee_name": "Unauthorized"},
+            ).status_code,
+            403,
+        )
+        test.refresh_from_db()
+        self.assertEqual(test.examinee_name, "Cadet Protected")
+
     def test_bulk_score_save_is_atomic_and_ignores_blank_ungraded_answers(self):
         """Speichert mehrere Punktänderungen gemeinsam, ohne Teilupdates bei ungültigen Werten."""
         user = get_user_model().objects.create_user(username="bulk-reviewer")

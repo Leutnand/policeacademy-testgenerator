@@ -82,6 +82,11 @@ urlpatterns = [
     path(
         "submissions/<uuid:test_id>/", views.submission_detail, name="submission_detail"
     ),
+    path(
+        "submissions/<uuid:test_id>/rename-examinee/",
+        views.rename_examinee,
+        name="rename_examinee",
+    ),
     path("submissions/<uuid:test_id>/delete/", views.delete_test, name="delete_test"),
     path("admin-dashboard/logs/", views.audit_logs, name="audit_logs"),
     path(

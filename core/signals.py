@@ -14,7 +14,7 @@ from .permissions import (
 
 @receiver(post_save, sender=QuestionPool)
 def ensure_question_pool_permissions(sender, instance, using, **kwargs):
-    """Erzeugt nach Poolanlage die vier konkreten Rechte; aktualisiert Namen nach Umbenennung."""
+    """Erzeugt nach Poolanlage die konkreten Rechte; aktualisiert Namen nach Umbenennung."""
     content_type = ContentType.objects.db_manager(using).get_for_model(QuestionPool)
     for action in POOL_PERMISSION_PREFIXES:
         Permission.objects.using(using).update_or_create(

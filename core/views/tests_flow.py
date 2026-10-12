@@ -23,7 +23,12 @@ from ..models import (
     Submission,
     TestSession,
 )
-from ..permissions import accessible_pools, has_pool_access, is_administrator
+from ..permissions import (
+    accessible_pools,
+    has_pool_access,
+    is_administrator,
+    pool_permission_codename,
+)
 from ..services import (
     TestGenerationError,
     evaluate_result,
@@ -461,6 +466,9 @@ def submissions(request):
                 "possible": possible,
                 "earned": earned,
                 "pending": pending,
+                "can_rename_examinee": has_pool_access(
+                    request.user, test.question_pool, "rename_examinee"
+                ),
                 **evaluate_result(test, earned, possible),
             }
         )
@@ -657,3 +665,55 @@ def submission_detail(request, test_id):
             "navigation_pending": navigation_pending,
         },
     )
+
+
+@login_required
+@require_POST
+def rename_examinee(request, test_id):
+    """Ändert den Prüflingsnamen nur mit Auswertungs- und eigenem Poolrecht."""
+    test = get_object_or_404(
+        TestSession, pk=test_id, status=TestSession.Status.COMPLETED
+    )
+    if not has_pool_access(request.user, test.question_pool, "submissions"):
+        return render(
+            request,
+            "core/403.html",
+            {"capability": "can_view_submissions_pool"},
+            status=403,
+        )
+    if not has_pool_access(request.user, test.question_pool, "rename_examinee"):
+        return render(
+            request,
+            "core/403.html",
+            {
+                "capability": pool_permission_codename(
+                    "rename_examinee", test.question_pool
+                )
+            },
+            status=403,
+        )
+    form = ExamineeNameForm(request.POST)
+    filter_query = request.GET.urlencode()
+    overview_url = reverse("submissions")
+    redirect_url = f"{overview_url}?{filter_query}" if filter_query else overview_url
+    if not form.is_valid():
+        for error in form.errors.get("examinee_name", ()):
+            messages.error(request, error)
+        return redirect(redirect_url)
+    previous_name = test.examinee_name
+    new_name = form.cleaned_data["examinee_name"]
+    if new_name != previous_name:
+        with transaction.atomic():
+            test.examinee_name = new_name
+            test.save(update_fields=["examinee_name"])
+            record_event(
+                request,
+                AuditLog.Category.SUBMISSION,
+                "submission.examinee_name_changed",
+                "Prüflingsname in der Testauswertung geändert.",
+                "test",
+                test.pk,
+                {"previous_name": previous_name, "new_name": new_name},
+            )
+        messages.success(request, "Der Name des Prüflings wurde geändert.")
+    return redirect(redirect_url)

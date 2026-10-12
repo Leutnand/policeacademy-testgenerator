@@ -34,6 +34,7 @@ from .tests_flow import (
     submissions,
     delete_test,
     submission_detail,
+    rename_examinee,
 )
 from .users import (
     users_dashboard,
@@ -75,6 +76,7 @@ __all__ = [
     "submissions",
     "delete_test",
     "submission_detail",
+    "rename_examinee",
     "users_dashboard",
     "user_delete",
     "user_create",

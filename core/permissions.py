@@ -10,6 +10,7 @@ POOL_PERMISSION_PREFIXES = {
     "generate": "can_generate_test_from_pool_",
     "submissions": "can_view_submissions_pool_",
     "delete": "can_delete_questions_pool_",
+    "rename_examinee": "can_rename_examinee_pool_",
 }
 GLOBAL_PERMISSION_CODES = {
     "can_manage_users": "core.can_manage_users",
@@ -59,6 +60,7 @@ def pool_permission_name(action, question_pool):
         "generate": "Tests aus diesem Pool generieren",
         "submissions": "Abgaben dieses Pools einsehen und bewerten",
         "delete": "Fragen im Pool löschen (einzeln und mehrere gleichzeitig)",
+        "rename_examinee": "Prüflingsnamen in diesem Pool ändern",
     }
     return f"{labels[action]}: {question_pool.name}"
 

@@ -192,6 +192,7 @@ def add_permission_checkboxes(form, selected_ids=()):
         "generate": "Erlaubt Tests ausschließlich aus diesem Fragenpool zu erstellen.",
         "submissions": "Erlaubt Abgaben dieses Pools anzusehen und zu bewerten.",
         "delete": "Erlaubt Fragen dieses Pools einzeln oder per Auswahl gleichzeitig zu löschen. Unabhängig vom Bearbeitungsrecht; zusätzlich ist das Ansichtsrecht nötig.",
+        "rename_examinee": "Erlaubt, den Namen eines Prüflings in der Auswertung dieses Pools zu ändern.",
     }
     sections = {}
     for permission in permissions:

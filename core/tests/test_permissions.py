@@ -402,6 +402,10 @@ class PermissionTests(TestCase):
             group_form,
             f"Fragen im Pool importieren und exportieren: {question_pool.name}",
         )
+        self.assertContains(
+            group_form,
+            f"Prüflingsnamen in diesem Pool ändern: {question_pool.name}",
+        )
         self.assertContains(group_form, "Tests aus diesem Pool generieren")
         self.assertContains(
             group_form,

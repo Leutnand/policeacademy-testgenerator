@@ -70,24 +70,44 @@
               {% if summary.pending %}<span class="status-pill pending">{{ summary.pending }} offen</span>{% else %}<span class="status-pill active">Ausgewertet</span>{% endif %}
             </td>
             <td class="row-actions">
-              <a class="icon-link"
-                 aria-label="Öffnen"
-                 title="Öffnen"
-                 href="{% url 'submission_detail' summary.test.pk %}{% if filter_query %}?{{ filter_query }}{% endif %}"><svg aria-hidden="true" viewBox="0 0 24 24" focusable="false"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12ZM12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6Z" /></svg></a>{% if can_delete_tests %}
-                <form method="post"
-                      action="{% url 'delete_test' summary.test.pk %}"
-                      onsubmit="
-                                return confirm(
-                                'Test, Antworten und Bewertungen endgültig löschen? Der Vorgang wird protokolliert.',
-                                );
-                               ">
-                  {% csrf_token %}
-                  <button class="icon-link danger-link"
-                          type="submit"
-                          aria-label="Test löschen"
-                          title="Test löschen"><svg aria-hidden="true" viewBox="0 0 24 24" focusable="false"><path d="M4 7h16M9 7V4h6v3m-9 0 1 13h10l1-13M10 11v5m4-5v5" /></svg></button>
-                </form>
-              {% endif %}
+              <div class="result-row-actions">
+                {% if summary.can_rename_examinee %}
+                  <details class="row-name-editor">
+                    <summary class="icon-link"
+                             aria-label="Prüflingsnamen ändern"
+                             title="Prüflingsnamen ändern">
+                      <svg aria-hidden="true" viewBox="0 0 24 24" focusable="false"><path d="M4 20h4L19 9l-4-4L4 16v4ZM13.5 6.5l4 4" /></svg>
+                    </summary>
+                    <form method="post"
+                          action="{% url 'rename_examinee' summary.test.pk %}{% if filter_query %}?{{ filter_query }}{% endif %}">
+                      {% csrf_token %}
+                      <label for="examinee-name-{{ summary.test.pk }}">Prüflingsname</label>
+                      <input id="examinee-name-{{ summary.test.pk }}"
+                             name="examinee_name"
+                             type="text"
+                             maxlength="120"
+                             value="{{ summary.test.examinee_name }}"
+                             required>
+                      <button class="button primary small" type="submit">Speichern</button>
+                    </form>
+                  </details>
+                {% endif %}
+                <a class="icon-link"
+                   aria-label="Öffnen"
+                   title="Öffnen"
+                   href="{% url 'submission_detail' summary.test.pk %}{% if filter_query %}?{{ filter_query }}{% endif %}"><svg aria-hidden="true" viewBox="0 0 24 24" focusable="false"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12ZM12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6Z" /></svg></a>
+                {% if can_delete_tests %}
+                  <form method="post"
+                        action="{% url 'delete_test' summary.test.pk %}"
+                        onsubmit="return confirm('Test, Antworten und Bewertungen endgültig löschen? Der Vorgang wird protokolliert.');">
+                    {% csrf_token %}
+                    <button class="icon-link danger-link"
+                            type="submit"
+                            aria-label="Test löschen"
+                            title="Test löschen"><svg aria-hidden="true" viewBox="0 0 24 24" focusable="false"><path d="M4 7h16M9 7V4h6v3m-9 0 1 13h10l1-13M10 11v5m4-5v5" /></svg></button>
+                  </form>
+                {% endif %}
+              </div>
             </td>
           </tr>
         {% empty %}
