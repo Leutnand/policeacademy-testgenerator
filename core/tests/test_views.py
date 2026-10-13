@@ -56,13 +56,16 @@ class SubmissionAndPoolViewTests(TestCase):
             )
             self.client.force_login(get_user_model().objects.get(pk=user.pk))
 
-        grant("view", "edit")
+        grant("view", "create", "update")
         self.assertEqual(self.client.post(bulk_url, data).status_code, 403)
         self.assertEqual(self.client.post(single_url).status_code, 403)
         self.assertEqual(Question.objects.count(), 4)
-        grant("delete")
-        self.assertEqual(self.client.post(bulk_url, data).status_code, 302)
+        grant("delete_single")
         self.assertEqual(self.client.post(single_url).status_code, 302)
+        self.assertEqual(self.client.post(bulk_url, data).status_code, 403)
+        self.assertEqual(Question.objects.count(), 3)
+        grant("delete_bulk")
+        self.assertEqual(self.client.post(bulk_url, data).status_code, 302)
         self.assertEqual(Question.objects.count(), 1)
 
     def test_submission_summary_renders_for_authorized_user(self):
@@ -73,9 +76,13 @@ class SubmissionAndPoolViewTests(TestCase):
         question_pool = QuestionPool.objects.create(name="Ergebnisprüfung")
         submissions_permission = Permission.objects.get(
             content_type__app_label="core",
-            codename=pool_permission_codename("submissions", question_pool),
+            codename=pool_permission_codename("view_submissions", question_pool),
         )
-        user.user_permissions.add(submissions_permission)
+        grade_permission = Permission.objects.get(
+            content_type__app_label="core",
+            codename=pool_permission_codename("grade", question_pool),
+        )
+        user.user_permissions.add(submissions_permission, grade_permission)
         test = TestSession.objects.create(
             created_by=user,
             question_pool=question_pool,
@@ -127,7 +134,7 @@ class SubmissionAndPoolViewTests(TestCase):
         question_pool = QuestionPool.objects.create(name="Namensänderung")
         submissions_permission = Permission.objects.get(
             content_type__app_label="core",
-            codename=pool_permission_codename("submissions", question_pool),
+            codename=pool_permission_codename("view_submissions", question_pool),
         )
         rename_permission = Permission.objects.get(
             content_type__app_label="core",
@@ -220,8 +227,12 @@ class SubmissionAndPoolViewTests(TestCase):
         user.user_permissions.add(
             Permission.objects.get(
                 content_type__app_label="core",
-                codename=pool_permission_codename("submissions", question_pool),
-            )
+                codename=pool_permission_codename("view_submissions", question_pool),
+            ),
+            Permission.objects.get(
+                content_type__app_label="core",
+                codename=pool_permission_codename("grade", question_pool),
+            ),
         )
         test = TestSession.objects.create(
             created_by=user,
@@ -288,7 +299,7 @@ class SubmissionAndPoolViewTests(TestCase):
         question_pool = QuestionPool.objects.create(name="Choice-Auswertung")
         permission = Permission.objects.get(
             content_type__app_label="core",
-            codename=pool_permission_codename("submissions", question_pool),
+            codename=pool_permission_codename("view_submissions", question_pool),
         )
         user.user_permissions.add(permission)
         test = TestSession.objects.create(
@@ -637,7 +648,14 @@ class StaffAndSettingsTests(TestCase):
         created = get_user_model().objects.get(username="academy-admin")
         self.assertTrue(created.is_superuser)
         self.assertTrue(created.is_staff)
-        self.assertTrue(created.has_perm("core.can_manage_users"))
+        self.assertFalse(
+            Permission.objects.filter(
+                content_type__app_label="core",
+                codename="can_manage_users",
+            ).exists()
+        )
+        self.assertTrue(created.has_perm("core.can_view_users"))
+        self.assertTrue(created.has_perm("core.can_create_users"))
         self.assertTrue(created.has_perm("core.can_delete_tests"))
         self.assertTrue(created.has_perm("core.can_view_audit_logs"))
         self.assertNotContains(
@@ -778,9 +796,15 @@ class StaffAndSettingsTests(TestCase):
         self.assertEqual(self.client.get(reverse("tool_settings")).status_code, 403)
         settings_permission = Permission.objects.get(
             content_type__app_label="core",
-            codename="can_manage_tool_settings",
+            codename="can_view_tool_settings",
         )
         employee.user_permissions.add(settings_permission)
+        employee.user_permissions.add(
+            Permission.objects.get(
+                content_type__app_label="core",
+                codename="can_update_site_name",
+            )
+        )
         self.assertEqual(self.client.get(reverse("tool_settings")).status_code, 200)
         response = self.client.post(
             reverse("tool_settings"),
@@ -814,7 +838,7 @@ class StaffAndSettingsTests(TestCase):
                     content_type__app_label="core",
                     codename=pool_permission_codename(action, question_pool),
                 )
-                for action in ("view", "import_export")
+                for action in ("view", "import", "export")
             ]
         )
         self.client.force_login(user)
@@ -851,7 +875,17 @@ class StaffAndSettingsTests(TestCase):
         user.user_permissions.remove(
             Permission.objects.get(
                 content_type__app_label="core",
-                codename=pool_permission_codename("import_export", question_pool),
+                codename=pool_permission_codename("import", question_pool),
+            )
+        )
+        self.assertEqual(
+            self.client.get(reverse("question_export", args=[question_pool.pk])).status_code,
+            200,
+        )
+        user.user_permissions.remove(
+            Permission.objects.get(
+                content_type__app_label="core",
+                codename=pool_permission_codename("export", question_pool),
             )
         )
         self.assertEqual(
@@ -921,7 +955,7 @@ class StaffAndSettingsTests(TestCase):
         viewer.user_permissions.add(
             Permission.objects.get(
                 content_type__app_label="core",
-                codename=pool_permission_codename("submissions", test.question_pool),
+                codename=pool_permission_codename("view_submissions", test.question_pool),
             )
         )
         self.client.force_login(viewer)

@@ -11,7 +11,10 @@ from .permissions import (
     DELEGATION_CONTROL_CODES,
     GLOBAL_PERMISSION_CODES,
     POOL_PERMISSION_PREFIXES,
+    POOL_UPDATE_FIELD_CAPABILITIES,
+    USER_UPDATE_FIELD_CAPABILITIES,
     has_access,
+    has_pool_access,
     is_administrator,
 )
 
@@ -38,7 +41,16 @@ class QuestionForm(forms.ModelForm):
 
     def __init__(self, *args, **kwargs):
         """Erzeugt einzelne Text- und Korrekt-Felder passend zum Fragenbestand."""
+        # Ohne Benutzer (z. B. interne Aufrufe) erfolgt keine Feldsperre
+        self.user = kwargs.pop("user", None)
         super().__init__(*args, **kwargs)
+        if self.user is not None and self.instance.pk:
+            # Bestehende Frage: Verankern und Musterlösung haben je ein eigenes Poolrecht
+            pool = self.instance.question_pool
+            if not has_pool_access(self.user, pool, "pin"):
+                self.fields["is_pinned"].disabled = True
+            if not has_pool_access(self.user, pool, "edit_answer_key"):
+                self.fields["answer_key"].disabled = True
         self.fields["question_pool"].queryset = QuestionPool.objects.order_by("name")
         self.fields["question_pool"].label = "Fragenpool / Prüfungstyp"
         self.fields["question_pool"].empty_label = "Pool auswählen"
@@ -101,6 +113,19 @@ class QuestionForm(forms.ModelForm):
         cleaned = super().clean()
         kind = cleaned.get("question_type")
         options = []
+        target_pool = cleaned.get("question_pool")
+        if self.user is not None and target_pool is not None:
+            # Änderungen an Verankerung oder Musterlösung erfordern das jeweilige Poolrecht
+            if cleaned.get("is_pinned", False) != self.instance.is_pinned and not (
+                has_pool_access(self.user, target_pool, "pin")
+            ):
+                self.add_error("is_pinned", "Dir fehlt das Recht, Fragen zu verankern.")
+            if (cleaned.get("answer_key") or "") != (
+                self.instance.answer_key or ""
+            ) and not has_pool_access(self.user, target_pool, "edit_answer_key"):
+                self.add_error(
+                    "answer_key", "Dir fehlt das Recht, die Musterlösung zu ändern."
+                )
         if kind in (Question.Type.SINGLE, Question.Type.MULTIPLE):
             for index in range(self.option_count):
                 text = cleaned.get(f"option_text_{index}", "").strip()
@@ -174,25 +199,66 @@ def add_permission_checkboxes(form, selected_ids=()):
         action: index for index, action in enumerate(POOL_PERMISSION_PREFIXES)
     }
     global_help = {
-        "can_manage_users": "Öffnet die Mitarbeiterverwaltung. Rechteänderungen brauchen zusätzlich das passende Recht zum Vergeben oder Entziehen.",
+        "can_view_users": "Zeigt die Mitarbeiterübersicht.",
+        "can_create_users": "Erlaubt das Anlegen von Mitarbeiterkonten.",
+        "can_update_user_username": "Ändert den Benutzernamen (Anmeldenamen) eines Mitarbeiters.",
+        "can_update_user_first_name": "Ändert den Vornamen eines Mitarbeiters.",
+        "can_update_user_last_name": "Ändert den Nachnamen eines Mitarbeiters.",
+        "can_activate_users": "Aktiviert ein deaktiviertes Mitarbeiterkonto wieder.",
+        "can_deactivate_users": "Deaktiviert ein Mitarbeiterkonto (das eigene Konto bleibt geschützt).",
+        "can_set_user_passwords": "Setzt ein neues Passwort für einen Mitarbeiter.",
         "can_delete_users": "Löscht Mitarbeiterkonten. Das eigene Konto und andere Administratoren sind geschützt.",
-        "can_manage_tool_settings": "Erlaubt Branding, Logintexte, Testgrenzen und Datenschutztexte in den Tool-Einstellungen zu ändern.",
+        "can_view_permission_groups": "Zeigt die Verwaltung der Rechtegruppen.",
+        "can_create_permission_groups": "Erlaubt das Anlegen von Rechtegruppen.",
+        "can_rename_permission_groups": "Benennt eine Rechtegruppe um.",
+        "can_update_permission_group_priority": "Ändert die Sortierzahl (Priorität) einer Rechtegruppe.",
+        "can_delete_permission_groups": "Erlaubt das Löschen von Rechtegruppen.",
+        "can_view_tool_settings": "Zeigt die Tool-Einstellungen.",
+        "can_update_site_name": "Ändert den Seitentitel.",
+        "can_update_department_name": "Ändert den Department-Namen.",
+        "can_update_site_icon": "Ändert das Site-Icon.",
+        "can_update_login_heading": "Ändert die Überschrift der Anmeldeseite.",
+        "can_update_login_text": "Ändert den Text der Anmeldeseite.",
+        "can_update_privacy_policy": "Ändert die Datenschutzerklärung.",
+        "can_update_imprint": "Ändert das Impressum.",
         "can_delete_tests": "Löscht abgeschlossene Tests. Zusätzlich ist Auswertungszugriff auf den zugehörigen Pool erforderlich.",
         "can_view_audit_logs": "Zeigt Zugriffe und Änderungen im Systemprotokoll an.",
+        "can_export_audit_logs": "Exportiert die gefilterten Audit-Einträge als CSV.",
         "can_clear_audit_logs": "Leert alle bisherigen Logeinträge. Der Löschvorgang wird selbst protokolliert; zusätzlich ist Leserecht nötig.",
         "can_grant_user_permissions": "Vergibt Gruppenmitgliedschaften und direkte Rechte. Erfordert Mitarbeiterverwaltung und erlaubt kein Entziehen.",
         "can_revoke_user_permissions": "Entzieht Gruppenmitgliedschaften und direkte Rechte. Erfordert Mitarbeiterverwaltung und erlaubt kein Vergeben.",
+        "can_assign_user_groups": "Weist Mitarbeitenden Rechtegruppen zu.",
+        "can_unassign_user_groups": "Entzieht Mitarbeitenden Rechtegruppen.",
+        "can_grant_group_permissions": "Fügt einer Rechtegruppe einzelne Berechtigungen hinzu.",
+        "can_revoke_group_permissions": "Entzieht einer Rechtegruppe einzelne Berechtigungen.",
         "can_grant_administrator": "Vergibt einer anderen Person vollständigen Administratorzugriff. Erfordert Mitarbeiterverwaltung.",
         "can_revoke_administrator": "Entzieht einer anderen Person den Administratorzugriff. Der eigene Status bleibt geschützt.",
+        "can_view_question_pools": "Zeigt die Fragenpoolverwaltung.",
+        "can_create_question_pools": "Legt einen neuen Fragenpool an.",
+        "can_update_pool_name": "Benennt einen Fragenpool um.",
+        "can_update_pool_description": "Ändert die Beschreibung eines Fragenpools.",
+        "can_update_pool_question_count": "Ändert, wie viele Fragen ein Test aus dem Pool enthält.",
+        "can_update_pool_pass_percentage": "Ändert die Bestehensgrenze in Prozent.",
+        "can_update_pool_min_time_limit": "Ändert das minimale Zeitlimit eines Tests.",
+        "can_update_pool_max_time_limit": "Ändert das maximale Zeitlimit eines Tests.",
+        "can_update_pool_start_info_text": "Ändert den Infotext vor dem Teststart.",
+        "can_update_pool_start_confirmations": "Ändert die Bestätigungsaussagen vor dem Teststart.",
+        "can_delete_question_pools": "Löscht einen leeren Fragenpool.",
     }
     pool_help = {
         "view": "Erlaubt, Fragen dieses Pools in der Academy-Fragenbank anzusehen.",
-        "edit": "Erlaubt Fragen dieses Pools anzulegen und zu bearbeiten. Zusätzlich ist das Ansichtsrecht nötig.",
-        "import_export": "Erlaubt den CSV-Import und -Export dieses Pools. Der Export enthält interne Lösungsschlüssel.",
+        "create": "Erlaubt, neue Fragen ausschließlich in diesem Pool anzulegen.",
+        "update": "Erlaubt, bestehende Fragen dieses Pools zu ändern.",
+        "import": "Erlaubt, Fragen in diesen Pool zu importieren.",
+        "export": "Erlaubt, Fragen aus diesem Pool zu exportieren.",
         "generate": "Erlaubt Tests ausschließlich aus diesem Fragenpool zu erstellen.",
-        "submissions": "Erlaubt Abgaben dieses Pools anzusehen und zu bewerten.",
-        "delete": "Erlaubt Fragen dieses Pools einzeln oder per Auswahl gleichzeitig zu löschen. Unabhängig vom Bearbeitungsrecht; zusätzlich ist das Ansichtsrecht nötig.",
+        "view_submissions": "Erlaubt Abgaben dieses Pools anzusehen.",
+        "grade": "Erlaubt, Abgaben dieses Pools zu bewerten.",
+        "delete_single": "Erlaubt genau eine Frage in diesem Pool zu löschen.",
+        "delete_bulk": "Erlaubt mehrere ausgewählte Fragen dieses Pools gemeinsam zu löschen.",
         "rename_examinee": "Erlaubt, den Namen eines Prüflings in der Auswertung dieses Pools zu ändern.",
+        "pin": "Erlaubt, Fragen dieses Pools zu verankern oder die Verankerung zu lösen.",
+        "edit_answer_key": "Erlaubt, die Musterlösung (Antwortschlüssel) von Fragen dieses Pools zu ändern.",
     }
     sections = {}
     for permission in permissions:
@@ -222,10 +288,11 @@ def add_permission_checkboxes(form, selected_ids=()):
                 if permission.codename.startswith(prefix)
             )
             permission_help = pool_help[pool_action]
-        elif permission.codename in global_help:
-            permission_help = global_help[permission.codename]
         else:
-            permission_help = global_help[permission.codename]
+            permission_help = global_help.get(
+                permission.codename,
+                "Erlaubt die zugehörige atomare Systemaktion.",
+            )
         field_name = f"permission_{permission.pk}"
         form.fields[field_name] = forms.BooleanField(
             label=permission.name,
@@ -304,6 +371,7 @@ class StaffUserForm(forms.ModelForm):
     def __init__(self, *args, **kwargs):
         """Initialisiert Adminstatus und verhindert versehentliches Aussperren."""
         self.current_user = kwargs.pop("current_user", None)
+        self.rights_only = kwargs.pop("rights_only", False)
         self.can_grant_user_permissions = is_administrator(
             self.current_user
         ) or has_access(
@@ -318,7 +386,16 @@ class StaffUserForm(forms.ModelForm):
         )
         self.can_manage_roles = (
             self.can_grant_user_permissions or self.can_revoke_user_permissions
+            or is_administrator(self.current_user)
         )
+        self.can_assign_user_groups = is_administrator(self.current_user) or has_access(
+            self.current_user, "can_assign_user_groups"
+        )
+        self.can_unassign_user_groups = (
+            is_administrator(self.current_user)
+            or has_access(self.current_user, "can_unassign_user_groups")
+        )
+        self.can_manage_groups = self.can_assign_user_groups or self.can_unassign_user_groups
         self.can_grant_administrator = is_administrator(
             self.current_user
         ) or has_access(
@@ -334,6 +411,11 @@ class StaffUserForm(forms.ModelForm):
         self.can_manage_administrator = (
             self.can_grant_administrator or self.can_revoke_administrator
         )
+        self.can_save_rights = (
+            self.can_manage_roles
+            or self.can_manage_groups
+            or self.can_manage_administrator
+        )
         super().__init__(*args, **kwargs)
         self.fields["is_administrator"].initial = is_administrator(self.instance)
         self.fields["is_administrator"].disabled = not self.can_manage_administrator
@@ -341,6 +423,30 @@ class StaffUserForm(forms.ModelForm):
         self.fields["first_name"].label = "Vorname"
         self.fields["last_name"].label = "Nachname"
         self.fields["is_active"].label = "Konto aktiv"
+        self.protected_permission_ids = set()
+        self.protected_group_ids = set()
+        if not is_administrator(self.current_user):
+            protected_permissions = Permission.objects.filter(
+                content_type__app_label="core",
+                codename__in=DELEGATION_CONTROL_CODES,
+            )
+            self.protected_permission_ids = set(
+                protected_permissions.values_list("pk", flat=True)
+            )
+            self.protected_group_ids = set(
+                Group.objects.filter(permissions__in=protected_permissions).values_list(
+                    "pk", flat=True
+                )
+            )
+        if self.can_manage_groups:
+            self.fields["groups"].queryset = self.fields["groups"].queryset.exclude(
+                pk__in=self.protected_group_ids
+            )
+        else:
+            self.fields["groups"].queryset = (
+                self.instance.groups.all() if self.instance.pk else Group.objects.none()
+            )
+            self.fields["groups"].disabled = True
         if self.can_manage_roles:
             selected_ids = (
                 set(self.instance.user_permissions.values_list("pk", flat=True))
@@ -348,37 +454,37 @@ class StaffUserForm(forms.ModelForm):
                 else set()
             )
             add_permission_checkboxes(self, selected_ids)
-            self.protected_permission_ids = set()
-            self.protected_group_ids = set()
-            if not is_administrator(self.current_user):
-                protected_permissions = Permission.objects.filter(
-                    content_type__app_label="core",
-                    codename__in=DELEGATION_CONTROL_CODES,
-                )
-                self.protected_permission_ids = set(
-                    protected_permissions.values_list("pk", flat=True)
-                )
-                for permission_id in self.protected_permission_ids:
-                    field = self.fields.get(f"permission_{permission_id}")
-                    if field:
-                        field.disabled = True
-                self.protected_group_ids = set(
-                    Group.objects.filter(
-                        permissions__in=protected_permissions,
-                    ).values_list("pk", flat=True)
-                )
-                self.fields["groups"].queryset = self.fields["groups"].queryset.exclude(
-                    pk__in=self.protected_group_ids,
+            for permission_id, field_name in self.permission_ids.items():
+                selected = permission_id in selected_ids
+                field = self.fields[field_name]
+                field.disabled = (
+                    (selected and not self.can_revoke_user_permissions)
+                    or (not selected and not self.can_grant_user_permissions)
+                    or permission_id in self.protected_permission_ids
                 )
         else:
-            self.fields["groups"].queryset = (
-                self.instance.groups.all() if self.instance.pk else Group.objects.none()
-            )
-            self.fields["groups"].disabled = True
-            self.protected_permission_ids = set()
-            self.protected_group_ids = set()
             self.permission_sections = []
             self.permission_ids = {}
+        if self.instance.pk and not self.rights_only:
+            # Bestehende Konten: jedes Feld nur mit seinem eigenen Einzelrecht änderbar
+            for field_name, capability in USER_UPDATE_FIELD_CAPABILITIES.items():
+                if not has_access(self.current_user, capability):
+                    self.fields[field_name].disabled = True
+            may_toggle_active = has_access(
+                self.current_user,
+                "can_deactivate_users" if self.instance.is_active else "can_activate_users",
+            )
+            if not may_toggle_active:
+                self.fields["is_active"].disabled = True
+        if self.rights_only:
+            for field_name in (
+                "username",
+                "first_name",
+                "last_name",
+                "is_active",
+                "password",
+            ):
+                self.fields[field_name].disabled = True
         self.order_fields(
             [
                 "username",
@@ -441,7 +547,7 @@ class StaffUserForm(forms.ModelForm):
             user.set_password(self.cleaned_data["password"])
         if commit:
             user.save()
-            if self.can_manage_roles:
+            if self.can_manage_groups:
                 current_groups = set(user.groups.all())
                 selected_groups = set(self.cleaned_data.get("groups", []))
                 locked_groups = {
@@ -449,13 +555,14 @@ class StaffUserForm(forms.ModelForm):
                     for group in current_groups
                     if group.pk in self.protected_group_ids
                 }
-                if not self.can_grant_user_permissions:
+                if not self.can_assign_user_groups:
                     selected_groups.intersection_update(current_groups)
-                if not self.can_revoke_user_permissions:
+                if not self.can_unassign_user_groups:
                     selected_groups.update(current_groups)
                 selected_groups.update(locked_groups)
                 user.groups.set(selected_groups)
 
+            if self.can_manage_roles:
                 current_permission_ids = set(
                     user.user_permissions.values_list("pk", flat=True)
                 )
@@ -492,6 +599,13 @@ class PermissionGroupForm(forms.ModelForm):
 
     def __init__(self, *args, **kwargs):
         """Markiert bestehende Rechte und lädt eine passende Sortierzahl."""
+        self.current_user = kwargs.pop("current_user", None)
+        self.can_grant_group_permissions = is_administrator(
+            self.current_user
+        ) or has_access(self.current_user, "can_grant_group_permissions")
+        self.can_revoke_group_permissions = is_administrator(
+            self.current_user
+        ) or has_access(self.current_user, "can_revoke_group_permissions")
         super().__init__(*args, **kwargs)
         if self.instance.pk:
             current_order = (
@@ -511,12 +625,24 @@ class PermissionGroupForm(forms.ModelForm):
                 or 0
             ) + 1
         self.fields["sort_order"].initial = current_order
+        if self.instance.pk:
+            # Bestehende Gruppe: Name und Priorität haben je ein eigenes Recht
+            if not has_access(self.current_user, "can_rename_permission_groups"):
+                self.fields["name"].disabled = True
+            if not has_access(self.current_user, "can_update_permission_group_priority"):
+                self.fields["sort_order"].disabled = True
         selected_ids = (
             set(self.instance.permissions.values_list("pk", flat=True))
             if self.instance.pk
             else set()
         )
         add_permission_checkboxes(self, selected_ids)
+        for permission_id, field_name in self.permission_ids.items():
+            selected = permission_id in selected_ids
+            if (selected and not self.can_revoke_group_permissions) or (
+                not selected and not self.can_grant_group_permissions
+            ):
+                self.fields[field_name].disabled = True
         self.order_fields(["name", "sort_order", *self.permission_ids.values()])
 
     def clean_name(self):
@@ -564,7 +690,24 @@ class ToolSettingsForm(forms.ModelForm):
         }
 
     def __init__(self, *args, **kwargs):
+        current_user = kwargs.pop("current_user", None)
         super().__init__(*args, **kwargs)
+        field_capabilities = {
+            "site_name": "update_site_name",
+            "department_name": "update_department_name",
+            "site_icon": "update_site_icon",
+            "login_page_heading": "update_login_heading",
+            "login_page_text": "update_login_text",
+            "privacy_policy": "update_privacy_policy",
+            "imprint": "update_imprint",
+        }
+        self.writable_fields = {
+            field_name
+            for field_name, capability in field_capabilities.items()
+            if is_administrator(current_user) or has_access(current_user, capability)
+        }
+        for field_name in field_capabilities:
+            self.fields[field_name].disabled = field_name not in self.writable_fields
         self.fields["privacy_policy"].widget.attrs["data-original-privacy"] = (
             self.instance.privacy_policy if self.instance.pk else ""
         )
@@ -685,7 +828,13 @@ class QuestionPoolForm(forms.ModelForm):
         )
 
     def __init__(self, *args, **kwargs):
+        current_user = kwargs.pop("current_user", None)
         super().__init__(*args, **kwargs)
+        if self.instance.pk:
+            # Bestehender Pool: jedes Feld nur mit dem passenden Einzelrecht änderbar
+            for field_name, capability in POOL_UPDATE_FIELD_CAPABILITIES.items():
+                if not has_access(current_user, capability):
+                    self.fields[field_name].disabled = True
         self.fields["start_info_text"].widget.attrs["rows"] = 6
         self.fields["start_confirmations"].widget.attrs["rows"] = 4
         self.fields["test_question_count"].widget.attrs["min"] = 1

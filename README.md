@@ -28,7 +28,7 @@ In der Ergebnisübersicht und Detailauswertung wird zusätzlich der Prozentwert 
 
 Bei einer Auswahlfrage werden pro Zeile Antworttext und Korrekt-Markierung gepflegt. Single Choice verlangt genau eine richtige Antwort, Multiple Choice mindestens eine richtige Antwort. Im Datensatz sieht die interne Darstellung beispielsweise so aus:
 
-Fragen lassen sich je Fragenpool als CSV exportieren oder ergänzend importieren. Die Excel-freundliche Datei verwendet UTF-8 mit BOM und in deutscher Excel-Umgebung übliche Semikolon-Trennzeichen. Sie enthält `text`, `question_type`, `points`, `answer_key`, `is_pinned` und `options_json`; Antwortoptionen werden als JSON in einer CSV-Zelle serialisiert. Der Import erkennt sowohl dieses Semikolonformat als auch ältere komma-getrennte Dateien. Er akzeptiert UTF-8-Dateien bis 5 MB und 5.000 Zeilen, prüft die gesamte Datei und speichert bei Fehlern keine Teilmenge. Identische Fragen im selben Fragenpool werden anhand von Fragetext, Typ, Punkten, Musterlösung, Verankerung und Antwortoptionen übersprungen; unterschiedliche Einstellungen bleiben importierbar. Bestehende Fragen werden weder verändert noch gelöscht. Für Export und Import sind sowohl das Ansichtsrecht als auch das separate Import-/Exportrecht des jeweiligen Pools erforderlich, da der Export interne Lösungsschlüssel enthält.
+Fragen lassen sich je Fragenpool als CSV exportieren oder ergänzend importieren. Die Excel-freundliche Datei verwendet UTF-8 mit BOM und in deutscher Excel-Umgebung übliche Semikolon-Trennzeichen. Sie enthält `text`, `question_type`, `points`, `answer_key`, `is_pinned` und `options_json`; Antwortoptionen werden als JSON in einer CSV-Zelle serialisiert. Der Import erkennt sowohl dieses Semikolonformat als auch ältere komma-getrennte Dateien. Er akzeptiert UTF-8-Dateien bis 5 MB und 5.000 Zeilen, prüft die gesamte Datei und speichert bei Fehlern keine Teilmenge. Identische Fragen im selben Fragenpool werden anhand von Fragetext, Typ, Punkten, Musterlösung, Verankerung und Antwortoptionen übersprungen; unterschiedliche Einstellungen bleiben importierbar. Bestehende Fragen werden weder verändert noch gelöscht. Export und Import sind jeweils durch ihr eigenes Poolrecht geschützt; da der Export interne Lösungsschlüssel enthält, sollte das Exportrecht nur vertrauenswürdigen Personen zugewiesen werden.
 
 ```json
 [
@@ -58,7 +58,7 @@ Die Datenbankstruktur und Permission-Metadaten werden mit `python manage.py migr
 
 ## Tool-Einstellungen und Datenschutz
 
-Mitarbeiter mit dem Recht `can_manage_tool_settings` öffnen über die Navigation **Einstellungen** die Tool-Einstellungen. Dort können sie Seitentitel, Department-Name, Favicon/Site-Icon (PNG oder ICO bis 1 MB) und die sichtbaren Texte der Loginseite pflegen. Das Icon und die Rechtstexte werden in der Datenbank beziehungsweise im Media-Speicher gespeichert; Docker verwendet dafür das persistente Volume `media_data`.
+Mitarbeiter benötigen `core.can_view_tool_settings`, um **Einstellungen** zu öffnen. Seitentitel, Department-Name, Site-Icon, Loginüberschrift, Logintext, Datenschutzerklärung und Impressum haben jeweils ein eigenes Änderungsrecht. Das Icon und die Rechtstexte werden in der Datenbank beziehungsweise im Media-Speicher gespeichert; Docker verwendet dafür das persistente Volume `media_data`.
 
 Auf derselben Seite werden Datenschutzerklärung und Impressum hinterlegt. Der Footer verlinkt auf **Impressum / DSGVO**; dort ist auch die Datenschutzerklärung erreichbar. Sobald eine Datenschutzerklärung konfiguriert ist, muss jedes Mitarbeiterkonto ihre aktuelle Fassung bestätigen, bevor es andere Mitarbeiterfunktionen nutzen kann. Änderungen am Erklärungstext lösen eine erneute Bestätigung aus. Für die Bestätigung wird ein Hash des Textes gespeichert, nicht der Text im Mitarbeiterprofil. Die Anwendung liefert keine vorgefertigte Rechtsberatung; die zuständige Stelle muss die tatsächlichen, rechtlich geprüften Inhalte eintragen.
 
@@ -70,46 +70,26 @@ Das RBAC verwendet Djangos `User`, `Group` und `Permission`. Berechtigungen werd
 
 **Administrator**
 
-`is_superuser=True` ist die einzige Administratorrolle und gewährt uneingeschränkten Zugriff. Die frühere Gruppe **Administrator** wird per Migration in diesen Status überführt und anschließend entfernt. Nur Administratoren verwalten Rechtegruppen. Mitarbeiter mit `can_manage_users` und dem passenden Grant-/Revoke-Recht dürfen gewöhnliche Gruppenmitgliedschaften und Rechte zuweisen; sicherheitskritische Rechte bleiben Administratoren vorbehalten. Die festen Gruppen „Fragen-Editor“, „Test-Manager“ und „Korrektor“ werden entfernt; neue Rollen werden ausschließlich über den Gruppenmanager erstellt.
+`is_superuser=True` ist die einzige Administratorrolle und gewährt uneingeschränkten Zugriff. Die frühere Gruppe **Administrator** wird per Migration in diesen Status überführt und anschließend entfernt. Mitarbeiterübersicht, Kontenpflege, Rechteansicht, Gruppenmitgliedschaft sowie Vergabe und Entzug direkter Rechte verwenden getrennte Rechte. Das Gleiche gilt für Rechtegruppen-Aktionen; sicherheitskritische Rechte können nicht von nicht-administrativen Mitarbeitern weiterdelegiert werden. Die festen Gruppen „Fragen-Editor“, „Test-Manager“ und „Korrektor“ werden entfernt; neue Rollen werden im Gruppenmanager erstellt.
 
-**Globale Berechtigungen**
+Jede Aktion ist durch ein eigenes Recht geschützt: Anzeigen, Anlegen, Ändern,
+Einzellöschen, Mehrfachlöschen, Import, Export, Bewerten und Rechtevergabe
+sind nicht zu einem Sammelrecht zusammengefasst. Die vollständigen globalen
+und poolbezogenen Codenamen und ihre Wirkungen stehen in
+[docs/berechtigungen.md](docs/berechtigungen.md). Die Rechtegruppenverwaltung
+verwendet eine durchsuchbare Dual-Listbox; Direktrechte werden Mitarbeitern
+als einzelne Checkboxen angezeigt. Alte Sammelrechte werden bei der Migration
+in Einzelrechte überführt und danach entfernt.
 
-| Permission | Zugriff |
-| --- | --- |
-| `core.can_manage_users` | Mitarbeiterkonten verwalten und Mitarbeiter-Rechteformular öffnen |
-| `core.can_delete_users` | Mitarbeiterkonten löschen; benötigt zusätzlich `can_manage_users`. Das eigene Konto und der letzte Administrator sind geschützt; Administratoren können andere Administratoren löschen. Tests bleiben erhalten und verlieren nur die Zuordnung zum gelöschten Ersteller. |
-| `core.can_delete_tests` | Abgegebene Tests löschen, zusätzlich zum Pool-Auswertungsrecht |
-| `core.can_view_audit_logs` | Systemprotokoll einsehen |
-| `core.can_clear_audit_logs` | Alle Audit-Einträge löschen; erfordert zusätzlich `can_view_audit_logs`, der Löschvorgang bleibt selbst protokolliert |
-| `core.can_grant_user_permissions` | Gruppenmitgliedschaften und direkte Nutzerrechte vergeben; zusätzlich ist `can_manage_users` erforderlich. Sicherheitskritische Rechte einschließlich `can_delete_users` bleiben Administratoren vorbehalten. |
-| `core.can_revoke_user_permissions` | Gruppenmitgliedschaften und direkte Nutzerrechte entziehen; zusätzlich ist `can_manage_users` erforderlich. Sicherheitskritische Rechte einschließlich `can_delete_users` bleiben Administratoren vorbehalten. |
-| `core.can_grant_administrator` | Einer anderen Person den Administratorstatus geben; zusätzlich ist `can_manage_users` erforderlich |
-| `core.can_revoke_administrator` | Einer anderen Person den Administratorstatus entziehen; zusätzlich ist `can_manage_users` erforderlich |
-
-Technische Django-Modellrechte und Admin-Protokollrechte werden nicht im Rechteeditor angeboten. Das technische Django-Admin ist deaktiviert; Anmeldung, Sessions und das interne Berechtigungsmodell bleiben notwendige Bestandteile der Anwendung.
-
-**Dynamische Poolberechtigungen**
-
-Bei jedem Fragenpool erzeugt das System sechs Permissions mit dem Poolschlüssel im Codename, beispielsweise `core.can_view_pool_12`, `core.can_edit_pool_12`, `core.can_import_export_pool_12`, `core.can_generate_test_from_pool_12`, `core.can_view_submissions_pool_12` und `core.can_delete_questions_pool_12`. Sie werden nach Fragenpool gruppiert und beim Löschen des Pools mit entfernt.
-
-| Suffix/Aktion | Wirkung |
-| --- | --- |
-| `can_view_pool_<id>` | Pool und seine Fragen in der Übersicht sehen |
-| `can_edit_pool_<id>` | Fragen in diesem Pool hinzufügen und bearbeiten; zusätzlich ist View-Recht erforderlich |
-| `can_import_export_pool_<id>` | Fragen dieses Pools als CSV importieren und exportieren; der Export enthält interne Lösungsschlüssel |
-| `can_generate_test_from_pool_<id>` | Tests ausschließlich aus diesem Pool erzeugen |
-| `can_view_submissions_pool_<id>` | Abgaben zu diesem Pool ansehen und bewerten |
-| `can_delete_questions_pool_<id>` | Fragen dieses Pools einzeln oder per Auswahlkästchen mehrfach löschen; unabhängig vom Edit-Recht, zusätzlich ist das View-Recht erforderlich |
-
-Eine Testabgabe gehört zu genau einem Pool, der beim Erzeugen am Test gespeichert wird. Die Auswertungsübersicht und Detail-URLs filtern deshalb nach der jeweiligen Poolberechtigung; eine Berechtigung für Pool A zeigt keine Tests aus Pool B. Administratoren sehen alle Pools.
+Eine Testabgabe gehört zu genau einem Pool, der beim Erzeugen am Test gespeichert wird. Die Auswertungsübersicht und Detail-URLs filtern deshalb nach der jeweiligen Poolberechtigung; eine Berechtigung für Pool A zeigt keine Tests aus Pool B. Anzeigen und Bewerten sind getrennte Rechte. Administratoren sehen alle Pools.
 
 **Verwaltung**
 
-Unter **Einstellungen** können Administratoren zwischen Mitarbeiterverwaltung und Rechtegruppen wechseln. Sie können eigene Gruppen anlegen, umbenennen, mit einer Sortierzahl versehen, mit globalen und dynamischen Poolrechten ausstatten und löschen. Die Liste folgt der Sortierzahl aufsteigend; gleiche Zahlen werden nach Gruppennamen sortiert. Berechtigungen werden im Gruppen- und Benutzerformular nach Wirkungsbereich gruppiert. Gruppen und individuelle Direktrechte lassen sich kombinieren. Delegierte Mitarbeiter benötigen `can_manage_users` plus jeweils das passende Grant- oder Revoke-Recht. Niemand kann den eigenen Administratorstatus entziehen. Bestehende Fragen und Tests wurden beim Pool-Backfill dem initialen Pool **Einstellungstest** zugeordnet.
+Unter **Einstellungen** können entsprechend berechtigte Mitarbeiter zwischen Mitarbeiterverwaltung und Rechtegruppen wechseln. Eigene Gruppen lassen sich erstellen, bearbeiten, mit einer Sortierzahl versehen, mit globalen und dynamischen Poolrechten ausstatten und löschen. Die Gruppenliste folgt aufsteigend der Priorität; bei Gleichstand entscheidet der Gruppenname. Die Mitarbeiterübersicht sortiert Konten nach der höchsten Priorität ihrer Rechtegruppen und anschließend alphabetisch, ohne zusätzliche Gruppentrennzeilen. Gruppenzugehörigkeiten und direkte Mitarbeiterrechte lassen sich kombinieren. Direktrechte erscheinen als einzelne Checkboxen, Gruppenrechte als durchsuchbare Dual-Listbox. Niemand kann den eigenen Administratorstatus entziehen. Bestehende Fragen und Tests wurden beim Pool-Backfill dem initialen Pool **Einstellungstest** zugeordnet.
 
 ## Systemprotokoll
 
-Mitarbeitende mit `core.can_view_audit_logs` sehen `/admin-dashboard/logs/`; Administratoren erhalten das Recht automatisch. Das Protokoll erfasst alle nicht-statischen HTTP-Aufrufe mit Zeitpunkt, Benutzer (falls angemeldet), HTTP-Methode, Pfad/Route, Statuscode, Laufzeit, direkter Client-IP und Browserkennung. Zusätzlich werden Fachereignisse für erfolgreiche/fehlgeschlagene Anmeldungen, akzeptierte/abgelehnte OTP-Versuche, Fragenänderungen, Testgenerierung, Testabgabe, Punktkorrektur, Mitarbeiter-/Rechteänderungen und Testlöschungen gespeichert. Frageereignisse enthalten zur Nachvollziehbarkeit auch Antwortoptionen und Musterlösungen; die Logberechtigung sollte deshalb nur vertrauenswürdigen Personen zugewiesen werden. Logs lassen sich nach Kategorie, Konto, Aktion/Text und Datum filtern und unter Beibehaltung der Filter als CSV exportieren. Ein berechtigter Mitarbeiter mit `can_clear_audit_logs` und `can_view_audit_logs` kann alle Einträge manuell leeren; der Löschvorgang selbst bleibt als neuer Eintrag erhalten.
+Mitarbeitende mit `core.can_view_audit_logs` sehen `/admin-dashboard/logs/`; Administratoren erhalten den Zugriff automatisch. Das Protokoll erfasst alle nicht-statischen HTTP-Aufrufe mit Zeitpunkt, Benutzer (falls angemeldet), HTTP-Methode, Pfad/Route, Statuscode, Laufzeit, direkter Client-IP und Browserkennung. Zusätzlich werden Fachereignisse für erfolgreiche/fehlgeschlagene Anmeldungen, akzeptierte/abgelehnte OTP-Versuche, Fragenänderungen, Testgenerierung, Testabgabe, Punktkorrektur, Mitarbeiter-/Rechteänderungen und Testlöschungen gespeichert. Frageereignisse enthalten zur Nachvollziehbarkeit auch Antwortoptionen und Musterlösungen; die Logberechtigung sollte deshalb nur vertrauenswürdigen Personen zugewiesen werden. Filtern, CSV-Export (`can_export_audit_logs`) und Leeren (`can_clear_audit_logs`) sind separat geschützt. Der Löschvorgang selbst bleibt als neuer Eintrag erhalten.
 
 Passwörter, OTPs und rohe HTTP-Request-Bodies werden ausdrücklich **nicht** protokolliert. Fachereignisse speichern gezielt die für einen nachvollziehbaren Änderungsverlauf nötigen Werte, nicht beliebige POST-Daten. Bei Testlöschung wird der Audit-Eintrag in derselben Datenbanktransaktion geschrieben und bleibt auch nach dem Entfernen von Test und Antworten erhalten. Das Log enthält personenbezogene Metadaten wie Benutzername, IP und Browserkennung. Standardmäßig werden Einträge älter als 180 Tage entfernt und das Log auf höchstens 50.000 neueste Einträge begrenzt; die Bereinigung läuft höchstens einmal täglich bei einem Request. Beide Werte lassen sich über `AUDIT_LOG_RETENTION_DAYS` und `AUDIT_LOG_MAX_ENTRIES` konfigurieren. Regelmäßige Backups und eine externe, manipulationssichere Logsenke bleiben für strengere Nachweispflichten erforderlich.
 

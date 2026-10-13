@@ -15,8 +15,13 @@ from django.views.decorators.http import require_http_methods, require_POST
 from ..forms import QuestionCsvImportForm, QuestionForm, QuestionPoolForm
 from ..audit import record_event
 from ..models import AuditLog, Question, QuestionPool
-from ..permissions import accessible_pools, has_pool_access
-from .common import require_administrator
+from ..permissions import (
+    POOL_UPDATE_CAPABILITIES,
+    accessible_pools,
+    has_access,
+    has_pool_access,
+)
+from .common import require_administrator, require_capability
 
 
 @login_required
@@ -71,14 +76,23 @@ def admin_dashboard(request):
             "selected_question_type": question_type,
             "selected_pinned_filter": pinned_filter,
             "question_types": Question.Type.choices,
-            "can_edit_selected_pool": has_pool_access(
-                request.user, selected_pool, "edit"
+            "can_create_selected_pool": has_pool_access(
+                request.user, selected_pool, "create"
             ),
-            "can_delete_selected_pool": has_pool_access(
-                request.user, selected_pool, "delete"
+            "can_update_selected_pool": has_pool_access(
+                request.user, selected_pool, "update"
             ),
-            "can_import_export_selected_pool": has_pool_access(
-                request.user, selected_pool, "import_export"
+            "can_delete_single_selected_pool": has_pool_access(
+                request.user, selected_pool, "delete_single"
+            ),
+            "can_delete_bulk_selected_pool": has_pool_access(
+                request.user, selected_pool, "delete_bulk"
+            ),
+            "can_import_selected_pool": has_pool_access(
+                request.user, selected_pool, "import"
+            ),
+            "can_export_selected_pool": has_pool_access(
+                request.user, selected_pool, "export"
             ),
             "csv_import_form": QuestionCsvImportForm(),
         },
@@ -116,15 +130,12 @@ def _question_import_key(question):
 def question_export(request, pool_id):
     """Exportiert Fragen samt internen Antwortschlüsseln nur für Pool-Editoren."""
     question_pool = get_object_or_404(QuestionPool, pk=pool_id)
-    if not has_pool_access(request.user, question_pool, "view") or not has_pool_access(
-        request.user,
-        question_pool,
-        "import_export",
-    ):
+    # Eigenständiges Einzelrecht: kein zusätzliches Ansichtsrecht nötig
+    if not has_pool_access(request.user, question_pool, "export"):
         return render(
             request,
             "core/403.html",
-            {"capability": "can_import_export_pool"},
+            {"capability": "can_export_questions_pool"},
             status=403,
         )
     response = HttpResponse(content_type="text/csv; charset=utf-8")
@@ -155,15 +166,12 @@ def question_export(request, pool_id):
 def question_import(request, pool_id):
     """Importiert validierte Fragen ergänzend; vorhandene Fragen werden nie überschrieben."""
     question_pool = get_object_or_404(QuestionPool, pk=pool_id)
-    if not has_pool_access(request.user, question_pool, "view") or not has_pool_access(
-        request.user,
-        question_pool,
-        "import_export",
-    ):
+    # Eigenständiges Einzelrecht: kein zusätzliches Ansichtsrecht nötig
+    if not has_pool_access(request.user, question_pool, "import"):
         return render(
             request,
             "core/403.html",
-            {"capability": "can_import_export_pool"},
+            {"capability": "can_import_questions_pool"},
             status=403,
         )
     form = QuestionCsvImportForm(request.POST, request.FILES)
@@ -318,13 +326,24 @@ def question_import(request, pool_id):
                 "question_search": "",
                 "selected_question_type": "",
                 "selected_pinned_filter": "",
-                "can_edit_selected_pool": has_pool_access(
-                    request.user, question_pool, "edit"
+                "can_create_selected_pool": has_pool_access(
+                    request.user, question_pool, "create"
                 ),
-                "can_delete_selected_pool": has_pool_access(
-                    request.user, question_pool, "delete"
+                "can_update_selected_pool": has_pool_access(
+                    request.user, question_pool, "update"
                 ),
-                "can_import_export_selected_pool": True,
+                "can_delete_single_selected_pool": has_pool_access(
+                    request.user, question_pool, "delete_single"
+                ),
+                "can_delete_bulk_selected_pool": has_pool_access(
+                    request.user, question_pool, "delete_bulk"
+                ),
+                "can_import_selected_pool": has_pool_access(
+                    request.user, question_pool, "import"
+                ),
+                "can_export_selected_pool": has_pool_access(
+                    request.user, question_pool, "export"
+                ),
                 "csv_import_form": form,
                 "csv_import_errors": errors,
             },
@@ -361,10 +380,22 @@ def question_import(request, pool_id):
     return redirect(f"{reverse('admin_dashboard')}?pool={question_pool.pk}")
 
 
-@require_administrator
+@login_required
 @require_http_methods(["GET", "POST"])
 def pools_dashboard(request):
     """Listet Prüfungstypen und legt neue, voneinander getrennte Fragenpools an."""
+    required_capability = (
+        "can_create_question_pools"
+        if request.method == "POST"
+        else "can_view_question_pools"
+    )
+    if not has_access(request.user, required_capability):
+        return render(
+            request,
+            "core/403.html",
+            {"capability": required_capability},
+            status=403,
+        )
     form = QuestionPoolForm(request.POST or None)
     if form.is_valid():
         question_pool = form.save()
@@ -383,15 +414,19 @@ def pools_dashboard(request):
         question_count=Count("questions", distinct=True),
         test_count=Count("test_sessions", distinct=True),
     )
+    if not has_access(request.user, "can_view_question_pools"):
+        pools = pools.none()
     return render(request, "core/pools.html", {"form": form, "pools": pools})
 
 
-@require_administrator
+@require_capability(*POOL_UPDATE_CAPABILITIES)
 @require_http_methods(["GET", "POST"])
 def pool_edit(request, pk):
     """Benennt einen vorhandenen Prüfungspool um, ohne Fragen zu verschieben."""
     question_pool = get_object_or_404(QuestionPool, pk=pk)
-    form = QuestionPoolForm(request.POST or None, instance=question_pool)
+    form = QuestionPoolForm(
+        request.POST or None, instance=question_pool, current_user=request.user
+    )
     if form.is_valid():
         question_pool = form.save()
         record_event(
@@ -410,7 +445,7 @@ def pool_edit(request, pk):
     )
 
 
-@require_administrator
+@require_capability("can_delete_question_pools")
 @require_POST
 def pool_delete(request, pk):
     """Löscht ausschließlich leere Pools und bewahrt Pools verwendeter Tests."""
@@ -442,26 +477,21 @@ def pool_delete(request, pk):
 @require_http_methods(["GET", "POST"])
 def question_create(request):
     """Legt eine Frage im ausgewählten Prüfungspool an."""
-    visible_pool_ids = accessible_pools(request.user, "view").values_list(
-        "pk", flat=True
-    )
-    editable_pools = accessible_pools(request.user, "edit").filter(
-        pk__in=visible_pool_ids
-    )
+    editable_pools = accessible_pools(request.user, "create")
     if not editable_pools.exists():
         return render(
-            request, "core/403.html", {"capability": "can_edit_pool"}, status=403
+            request, "core/403.html", {"capability": "can_create_question_pool"}, status=403
         )
     requested_pool_id = request.GET.get("pool") or request.POST.get("question_pool")
     if requested_pool_id and not editable_pools.filter(pk=requested_pool_id).exists():
         return render(
-            request, "core/403.html", {"capability": "can_edit_pool"}, status=403
+            request, "core/403.html", {"capability": "can_create_question_pool"}, status=403
         )
     selected_pool_id = (
         request.GET.get("pool") or editable_pools.values_list("pk", flat=True).first()
     )
     initial = {"question_pool": selected_pool_id} if selected_pool_id else None
-    form = QuestionForm(request.POST or None, initial=initial)
+    form = QuestionForm(request.POST or None, initial=initial, user=request.user)
     form.fields["question_pool"].queryset = editable_pools
     if form.is_valid():
         question = form.save()
@@ -498,25 +528,19 @@ def question_create(request):
 def question_edit(request, pk):
     """Bearbeitet eine Frage nach serverseitiger Rechteprüfung."""
     question = get_object_or_404(Question, pk=pk)
-    if not has_pool_access(
-        request.user, question.question_pool, "view"
-    ) or not has_pool_access(request.user, question.question_pool, "edit"):
+    # Eigenständiges Einzelrecht: kein zusätzliches Ansichtsrecht nötig
+    if not has_pool_access(request.user, question.question_pool, "update"):
         return render(
-            request, "core/403.html", {"capability": "can_edit_pool"}, status=403
+            request, "core/403.html", {"capability": "can_update_question_pool"}, status=403
         )
-    visible_pool_ids = accessible_pools(request.user, "view").values_list(
-        "pk", flat=True
-    )
-    editable_pools = accessible_pools(request.user, "edit").filter(
-        pk__in=visible_pool_ids
-    )
+    editable_pools = accessible_pools(request.user, "update")
     if request.method == "POST":
         target_pool_id = request.POST.get("question_pool")
         if target_pool_id and not editable_pools.filter(pk=target_pool_id).exists():
             return render(
-                request, "core/403.html", {"capability": "can_edit_pool"}, status=403
+                request,                 "core/403.html", {"capability": "can_update_question_pool"}, status=403
             )
-    form = QuestionForm(request.POST or None, instance=question)
+    form = QuestionForm(request.POST or None, instance=question, user=request.user)
     form.fields["question_pool"].queryset = editable_pools
     if form.is_valid():
         question = form.save()
@@ -553,13 +577,12 @@ def question_edit(request, pk):
 def question_delete(request, pk):
     """Löscht eine Frage ausschließlich über eine CSRF-geschützte POST-Aktion."""
     question = get_object_or_404(Question, pk=pk)
-    if not has_pool_access(
-        request.user, question.question_pool, "view"
-    ) or not has_pool_access(request.user, question.question_pool, "delete"):
+    # Eigenständiges Einzelrecht: kein zusätzliches Ansichtsrecht nötig
+    if not has_pool_access(request.user, question.question_pool, "delete_single"):
         return render(
             request,
             "core/403.html",
-            {"capability": "can_delete_questions_pool"},
+            {"capability": "can_delete_single_question_pool"},
             status=403,
         )
     question_pool_id = question.question_pool_id
@@ -587,13 +610,12 @@ def question_delete(request, pk):
 def question_bulk_delete(request, pool_pk):
     """Löscht mehrere ausgewählte Fragen eines Pools per POST."""
     question_pool = get_object_or_404(QuestionPool, pk=pool_pk)
-    if not has_pool_access(request.user, question_pool, "view") or not has_pool_access(
-        request.user, question_pool, "delete"
-    ):
+    # Eigenständiges Einzelrecht: kein zusätzliches Ansichtsrecht nötig
+    if not has_pool_access(request.user, question_pool, "delete_bulk"):
         return render(
             request,
             "core/403.html",
-            {"capability": "can_delete_questions_pool"},
+            {"capability": "can_bulk_delete_questions_pool"},
             status=403,
         )
     ids = [i for i in request.POST.getlist("question_ids") if i.isdigit()]

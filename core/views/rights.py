@@ -9,7 +9,13 @@ from django.views.decorators.http import require_http_methods, require_POST
 from ..forms import PermissionGroupForm, StaffUserForm
 from ..audit import record_event
 from ..models import AuditLog
-from ..permissions import ADMINISTRATOR_GROUP, is_administrator
+from ..permissions import (
+    ADMINISTRATOR_GROUP,
+    GROUP_UPDATE_CAPABILITIES,
+    has_access,
+    has_any_access,
+    is_administrator,
+)
 from .common import (
     require_capability,
     require_administrator,
@@ -17,7 +23,7 @@ from .common import (
 )
 
 
-@require_administrator
+@require_capability("view_groups")
 def permissions_dashboard(request):
     """Zeigt Academy-Rechtegruppen nach ihrer Sortierzahl."""
     groups = (
@@ -35,15 +41,18 @@ def permissions_dashboard(request):
         "core/permissions.html",
         {
             "groups": groups,
+            "can_create_groups": has_access(request.user, "create_groups"),
+            "can_update_groups": has_any_access(request.user, GROUP_UPDATE_CAPABILITIES),
+            "can_delete_groups": has_access(request.user, "delete_groups"),
         },
     )
 
 
-@require_administrator
+@require_capability("create_groups")
 @require_http_methods(["GET", "POST"])
 def permission_group_create(request):
     """Legt eine frei benannte Gruppe mit beliebigen Django-Permissions an."""
-    form = PermissionGroupForm(request.POST or None)
+    form = PermissionGroupForm(request.POST or None, current_user=request.user)
     if form.is_valid():
         group = form.save()
         record_event(
@@ -73,7 +82,7 @@ def permission_group_create(request):
     )
 
 
-@require_administrator
+@require_capability(*GROUP_UPDATE_CAPABILITIES)
 @require_http_methods(["GET", "POST"])
 def permission_group_edit(request, pk):
     """Bearbeitet eine eigene Gruppe; die reservierte Administratorrolle bleibt geschützt."""
@@ -85,7 +94,9 @@ def permission_group_edit(request, pk):
             {"capability": "Administratorrolle bearbeiten"},
             status=403,
         )
-    form = PermissionGroupForm(request.POST or None, instance=group)
+    form = PermissionGroupForm(
+        request.POST or None, instance=group, current_user=request.user
+    )
     if form.is_valid():
         group = form.save()
         record_event(
@@ -115,7 +126,7 @@ def permission_group_edit(request, pk):
     )
 
 
-@require_administrator
+@require_capability("delete_groups")
 @require_POST
 def permission_group_delete(request, pk):
     """Löscht eine eigene Rechtegruppe, nicht aber die reservierte Administratorrolle."""
@@ -143,12 +154,34 @@ def permission_group_delete(request, pk):
     return redirect("permissions_dashboard")
 
 
-@require_capability("can_manage_users")
+@require_capability("view_user_permissions")
 @require_http_methods(["GET", "POST"])
 def permission_user_edit(request, pk):
     """Verwaltet Gruppen und individuelle Direktrechte eines Mitarbeiters."""
+    if request.method == "POST" and not any(
+        has_access(request.user, capability)
+        for capability in (
+            "can_assign_user_groups",
+            "can_unassign_user_groups",
+            "can_grant_user_permissions",
+            "can_revoke_user_permissions",
+            "can_grant_administrator",
+            "can_revoke_administrator",
+        )
+    ):
+        return render(
+            request,
+            "core/403.html",
+            {"capability": "Rechte zuweisen oder entziehen"},
+            status=403,
+        )
     user = get_object_or_404(User, pk=pk)
-    form = StaffUserForm(request.POST or None, instance=user, current_user=request.user)
+    form = StaffUserForm(
+        request.POST or None,
+        instance=user,
+        current_user=request.user,
+        rights_only=True,
+    )
     if form.is_valid():
         user = form.save()
         record_event(

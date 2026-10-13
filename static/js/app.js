@@ -87,6 +87,71 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   });
 
+  document.querySelectorAll('[data-dual-listbox]').forEach((editor) => {
+    const available = editor.querySelector('[data-permission-available]');
+    const assigned = editor.querySelector('[data-permission-assigned]');
+    const source = editor.querySelector('.dual-listbox-source');
+    const search = editor.querySelector('[data-permission-search]');
+    if (!available || !assigned || !source) return;
+    const items = [...source.querySelectorAll('[data-permission-item]')];
+
+    const sortItems = (container) => {
+      [...container.children]
+        .sort((left, right) => left.textContent.trim().localeCompare(right.textContent.trim(), 'de'))
+        .forEach((item) => container.append(item));
+    };
+    const move = (item, target) => {
+      const checkbox = item.querySelector('input[type="checkbox"]');
+      if (target === assigned && checkbox?.disabled) return;
+      if (checkbox) checkbox.checked = target === assigned;
+      target.append(item);
+      item.setAttribute('aria-selected', target === assigned ? 'true' : 'false');
+    };
+    items.forEach((item) => {
+      item.tabIndex = 0;
+      item.setAttribute('role', 'option');
+      move(item, item.querySelector('input')?.checked ? assigned : available);
+    });
+    sortItems(available);
+    sortItems(assigned);
+
+    const moveSelected = (from, to, all = false) => {
+      [...from.children]
+        .filter((item) => all || item.classList.contains('is-selected'))
+        .forEach((item) => move(item, to));
+      sortItems(to);
+    };
+    [available, assigned].forEach((list) => {
+      list.addEventListener('click', (event) => {
+        const item = event.target.closest('[data-permission-item]');
+        if (!item) return;
+        item.classList.toggle('is-selected');
+        item.setAttribute('aria-selected', item.classList.contains('is-selected') ? 'true' : 'false');
+      });
+      list.addEventListener('dblclick', (event) => {
+        const item = event.target.closest('[data-permission-item]');
+        if (item) move(item, list === available ? assigned : available);
+      });
+      list.addEventListener('keydown', (event) => {
+        if (event.key !== 'Enter' && event.key !== ' ') return;
+        const item = event.target.closest('[data-permission-item]');
+        if (!item) return;
+        event.preventDefault();
+        move(item, list === available ? assigned : available);
+      });
+    });
+    editor.querySelector('[data-move-all-right]')?.addEventListener('click', () => moveSelected(available, assigned, true));
+    editor.querySelector('[data-move-selected-right]')?.addEventListener('click', () => moveSelected(available, assigned));
+    editor.querySelector('[data-move-selected-left]')?.addEventListener('click', () => moveSelected(assigned, available));
+    editor.querySelector('[data-move-all-left]')?.addEventListener('click', () => moveSelected(assigned, available, true));
+    search?.addEventListener('input', () => {
+      const query = search.value.trim().toLocaleLowerCase('de-DE');
+      [...available.children].forEach((item) => {
+        item.hidden = Boolean(query) && !item.dataset.permissionText.includes(query);
+      });
+    });
+  });
+
   const poolSelect = document.querySelector('#id_question_pool');
   const poolSummary = document.querySelector('#selected-pool-summary');
   poolSelect?.addEventListener('change', () => {

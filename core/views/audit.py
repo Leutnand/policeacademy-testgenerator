@@ -65,7 +65,7 @@ def _filtered_audit_logs(request):
     return entries
 
 
-@require_capability("can_view_audit_logs")
+@require_capability("can_export_audit_logs")
 def audit_logs_export(request):
     """Exportiert ausschließlich die gefilterten Audit-Einträge als CSV."""
     if any(
@@ -118,7 +118,6 @@ def audit_logs_export(request):
     return response
 
 
-@require_capability("can_view_audit_logs")
 @require_capability("can_clear_audit_logs")
 @require_POST
 def clear_audit_logs(request):

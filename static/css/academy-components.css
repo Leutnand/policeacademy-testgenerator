@@ -702,6 +702,69 @@
   gap: 4px;
 }
 
+.dual-listbox {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  gap: 14px;
+  align-items: center;
+}
+
+.dual-listbox-column {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.dual-listbox-label,
+.dual-listbox-column > label {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+
+.dual-listbox-search {
+  width: 100%;
+}
+
+.dual-listbox-list {
+  display: grid;
+  align-content: start;
+  gap: 5px;
+  min-height: 270px;
+  max-height: 470px;
+  overflow-y: auto;
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface-soft);
+}
+
+.dual-listbox-list .permission-choice {
+  cursor: pointer;
+  margin: 0;
+}
+
+.dual-listbox-list .permission-choice.is-selected {
+  outline: 2px solid var(--lapd-blue);
+  outline-offset: -2px;
+}
+
+.dual-listbox-controls {
+  display: grid;
+  gap: 6px;
+}
+
+.dual-listbox-controls .button {
+  min-width: 38px;
+  padding-inline: 8px;
+}
+
+.dual-listbox-source {
+  display: none;
+}
+
 .permission-choice strong {
   font-size: 12px;
   font-weight: 600;
@@ -713,6 +776,71 @@
   font-weight: 400;
   line-height: 1.4;
 }
+
+.dual-listbox {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  gap: 14px;
+  align-items: center;
+}
+
+.dual-listbox-column {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.dual-listbox-label,
+.dual-listbox-column > label {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+
+.dual-listbox-search {
+  width: 100%;
+}
+
+.dual-listbox-list {
+  display: grid;
+  align-content: start;
+  gap: 5px;
+  min-height: 270px;
+  max-height: 470px;
+  overflow-y: auto;
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface-soft);
+}
+
+.dual-listbox-list .permission-choice {
+  cursor: pointer;
+  margin: 0;
+}
+
+.dual-listbox-list .permission-choice.is-selected {
+  outline: 2px solid var(--lapd-blue);
+  outline-offset: -2px;
+}
+
+.dual-listbox-controls {
+  display: grid;
+  gap: 6px;
+}
+
+.dual-listbox-controls .button {
+  min-width: 38px;
+  padding-inline: 8px;
+}
+
+.dual-listbox-source {
+  display: none;
+}
+
+
 
 .role-lock-note {
   margin: 18px 0;

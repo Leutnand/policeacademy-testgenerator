@@ -7,8 +7,9 @@ from django.utils.dateparse import parse_date
 from ..permissions import has_access, is_administrator
 
 
-def require_capability(capability):
-    """Erzeugt einen Dekorator für Login- und Fachberechtigungsprüfung."""
+def require_capability(*capabilities):
+    """Erzeugt einen Dekorator; mit mehreren Rechten genügt eines davon (ODER)."""
+    capability = capabilities[0]
 
     def decorator(view_func):
         """Prüft Rechte vor Ausführung des geschützten Endpunkts."""
@@ -16,7 +17,7 @@ def require_capability(capability):
         @login_required
         def wrapped(request, *args, **kwargs):
             """Lehnt nicht berechtigte Benutzer direkt mit HTTP 403 ab."""
-            if not has_access(request.user, capability):
+            if not any(has_access(request.user, code) for code in capabilities):
                 return render(
                     request, "core/403.html", {"capability": capability}, status=403
                 )

@@ -77,15 +77,18 @@ def privacy_accept(request):
     )
 
 
-@require_capability("can_manage_tool_settings")
+@require_capability("view_tool_settings")
 @require_http_methods(["GET", "POST"])
 def tool_settings(request):
     """Bearbeitet zentrale Branding-, Prüfungs- und Rechtstext-Einstellungen."""
     configuration = ToolSettings.current()
     form = ToolSettingsForm(
-        request.POST or None, request.FILES or None, instance=configuration
+        request.POST or None,
+        request.FILES or None,
+        instance=configuration,
+        current_user=request.user,
     )
-    if form.is_valid():
+    if form.is_valid() and form.changed_data:
         changed_fields = list(form.changed_data)
         form.save()
         record_event(
@@ -109,7 +112,7 @@ def dashboard(request):
             ("question_view", "admin_dashboard"),
             ("question_generate", "generate_test"),
             ("question_submissions", "submissions"),
-            ("can_manage_users", "users_dashboard"),
+            ("view_users", "users_dashboard"),
         ):
             allowed = (
                 has_any_pool_access(request.user, "view")
@@ -118,7 +121,7 @@ def dashboard(request):
                     has_any_pool_access(request.user, "generate")
                     if capability == "question_generate"
                     else (
-                        has_any_pool_access(request.user, "submissions")
+                        has_any_pool_access(request.user, "view_submissions")
                         if capability == "question_submissions"
                         else has_access(request.user, capability)
                     )

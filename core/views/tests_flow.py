@@ -389,7 +389,7 @@ def take_test(request, test_id):
 @login_required
 def submissions(request):
     """Zeigt freigegebene Testabgaben, optional gefiltert nach Prüfungstyp."""
-    submission_pools = accessible_pools(request.user, "submissions").order_by("name")
+    submission_pools = accessible_pools(request.user, "view_submissions").order_by("name")
     if not is_administrator(request.user) and not submission_pools.exists():
         return render(
             request,
@@ -498,7 +498,7 @@ def delete_test(request, test_id):
     test = get_object_or_404(
         TestSession, pk=test_id, status=TestSession.Status.COMPLETED
     )
-    if not has_pool_access(request.user, test.question_pool, "submissions"):
+    if not has_pool_access(request.user, test.question_pool, "view_submissions"):
         return render(
             request,
             "core/403.html",
@@ -530,7 +530,7 @@ def submission_detail(request, test_id):
     test = get_object_or_404(
         TestSession, pk=test_id, status=TestSession.Status.COMPLETED
     )
-    if not has_pool_access(request.user, test.question_pool, "submissions"):
+    if not has_pool_access(request.user, test.question_pool, "view_submissions"):
         return render(
             request,
             "core/403.html",
@@ -543,9 +543,7 @@ def submission_detail(request, test_id):
         .order_by("test_question__position")
     )
     answers = list(answer_query)
-    can_grade_submissions = has_pool_access(
-        request.user, test.question_pool, "submissions"
-    )
+    can_grade_submissions = has_pool_access(request.user, test.question_pool, "grade")
     score_values = {}
     if request.method == "POST":
         if not can_grade_submissions:
@@ -674,7 +672,7 @@ def rename_examinee(request, test_id):
     test = get_object_or_404(
         TestSession, pk=test_id, status=TestSession.Status.COMPLETED
     )
-    if not has_pool_access(request.user, test.question_pool, "submissions"):
+    if not has_pool_access(request.user, test.question_pool, "view_submissions"):
         return render(
             request,
             "core/403.html",

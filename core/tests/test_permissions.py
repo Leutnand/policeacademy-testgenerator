@@ -2,9 +2,14 @@
 
 import csv
 import io
+from importlib import import_module
 from datetime import timedelta
+from types import SimpleNamespace
+from django.apps import apps
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group, Permission
+from django.contrib.contenttypes.models import ContentType
+from django.db import connection
 from django.test import TestCase, override_settings
 from django.utils import timezone
 from django.urls import reverse
@@ -17,7 +22,12 @@ from ..models import (
     TestQuestion,
     TestSession,
 )
-from ..permissions import ADMINISTRATOR_GROUP, has_pool_access, pool_permission_codename
+from ..permissions import (
+    ADMINISTRATOR_GROUP,
+    has_access,
+    has_pool_access,
+    pool_permission_codename,
+)
 from ..audit import prune_audit_logs
 
 
@@ -29,7 +39,7 @@ class PermissionTests(TestCase):
         manager.user_permissions.add(
             *Permission.objects.filter(
                 content_type__app_label="core",
-                codename__in=("can_manage_users", "can_delete_users"),
+                codename__in=("can_view_users", "can_delete_users"),
             )
         )
         employee = get_user_model().objects.create_user(username="employee-to-delete")
@@ -61,12 +71,6 @@ class PermissionTests(TestCase):
         self,
     ):
         manager = get_user_model().objects.create_user(username="staff-manager")
-        manager.user_permissions.add(
-            Permission.objects.get(
-                content_type__app_label="core",
-                codename="can_manage_users",
-            )
-        )
         employee = get_user_model().objects.create_user(username="protected-employee")
         self.client.force_login(manager)
         self.assertEqual(
@@ -78,7 +82,11 @@ class PermissionTests(TestCase):
             Permission.objects.get(
                 content_type__app_label="core",
                 codename="can_delete_users",
-            )
+            ),
+            Permission.objects.get(
+                content_type__app_label="core",
+                codename="can_view_users",
+            ),
         )
         self.assertRedirects(
             self.client.post(reverse("user_delete", args=[manager.pk])),
@@ -116,7 +124,7 @@ class PermissionTests(TestCase):
         self.assertNotContains(response, reverse("question_create"))
         edit_permission = Permission.objects.get(
             content_type__app_label="core",
-            codename=pool_permission_codename("edit", question_pool),
+            codename=pool_permission_codename("create", question_pool),
         )
         user.user_permissions.add(edit_permission)
         self.assertContains(self.client.get(url), reverse("question_create"))
@@ -165,7 +173,7 @@ class PermissionTests(TestCase):
                 )
                 for action, pool in [
                     ("view", view_pool),
-                    ("submissions", view_pool),
+                    ("view_submissions", view_pool),
                     ("generate", generate_pool),
                 ]
             ]
@@ -270,7 +278,7 @@ class PermissionTests(TestCase):
         user.user_permissions.add(
             Permission.objects.get(
                 content_type__app_label="core",
-                codename=pool_permission_codename("submissions", question_pool),
+                codename=pool_permission_codename("view_submissions", question_pool),
             )
         )
         tests = []
@@ -319,9 +327,9 @@ class PermissionTests(TestCase):
         """Audit-Filter werden in den Export übernommen und nur berechtigte Nutzer dürfen exportieren."""
         reader = get_user_model().objects.create_user(username="audit-export-reader")
         reader.user_permissions.add(
-            Permission.objects.get(
+            *Permission.objects.filter(
                 content_type__app_label="core",
-                codename="can_view_audit_logs",
+                codename__in=("can_view_audit_logs", "can_export_audit_logs"),
             )
         )
         matching = AuditLog.objects.create(
@@ -397,10 +405,14 @@ class PermissionTests(TestCase):
         group_form = self.client.get(reverse("permission_group_create"))
         self.assertContains(group_form, "Sortierzahl")
         self.assertContains(group_form, f"Pool · {question_pool.name}")
-        self.assertContains(group_form, "Seiteneinstellungen verwalten")
+        self.assertContains(group_form, "Seitentitel ändern")
         self.assertContains(
             group_form,
-            f"Fragen im Pool importieren und exportieren: {question_pool.name}",
+            f"Fragen in diesem Pool importieren: {question_pool.name}",
+        )
+        self.assertContains(
+            group_form,
+            f"Fragen aus diesem Pool exportieren: {question_pool.name}",
         )
         self.assertContains(
             group_form,
@@ -452,7 +464,7 @@ class PermissionTests(TestCase):
         self.assertNotContains(group_form, "can_view_pool_")
         csv_permission = Permission.objects.get(
             content_type__app_label="core",
-            codename=pool_permission_codename("import_export", question_pool),
+            codename=pool_permission_codename("import", question_pool),
         )
         response = self.client.post(
             reverse("permission_group_create"),
@@ -577,20 +589,90 @@ class RightsAndAuditTests(TestCase):
             ).exists()
         )
 
-    def test_rights_manager_is_admin_only(self):
-        """Benutzer mit reiner Benutzerverwaltung dürfen keine Permissions delegieren."""
+    def test_legacy_aggregate_permission_does_not_grant_atomic_capabilities(self):
+        """Ein altes Sammelrecht darf keine Einzelaktion mehr freischalten."""
         manager = get_user_model().objects.create_user(
             username="non-admin-manager", password="test-pass-123"
         )
-        manager.user_permissions.add(
-            Permission.objects.get(
-                content_type__app_label="core", codename="can_manage_users"
-            )
+        legacy_permission = Permission.objects.create(
+            content_type=ContentType.objects.get(
+                app_label="core", model="questionpool"
+            ),
+            codename="can_manage_users",
+            name="Legacy-Sammelrecht",
         )
+        manager.user_permissions.add(legacy_permission)
+        self.assertFalse(has_access(manager, "view_users"))
+        self.assertFalse(has_access(manager, "create_users"))
         self.client.force_login(manager)
         self.assertEqual(
             self.client.get(reverse("permissions_dashboard")).status_code, 403
         )
+
+    def test_permission_migration_splits_existing_user_and_group_assignments(self):
+        """Die Rechte-Migration überträgt vorhandene Zuweisungen auf Einzelrechte."""
+        legacy_module = import_module(
+            "core.migrations.0023_alter_questionpool_options"
+        )
+        content_type = ContentType.objects.get_for_model(QuestionPool)
+        user = get_user_model().objects.create_user(username="legacy-rights-user")
+        group = Group.objects.create(name="Legacy-Rechte")
+        legacy_manage = Permission.objects.create(
+            content_type=content_type,
+            codename="can_manage_users",
+            name="Mitarbeiter verwalten",
+        )
+        legacy_grant = Permission.objects.get(
+            content_type=content_type,
+            codename="can_grant_user_permissions",
+        )
+        legacy_revoke = Permission.objects.get(
+            content_type=content_type,
+            codename="can_revoke_user_permissions",
+        )
+        user.user_permissions.add(legacy_manage, legacy_grant, legacy_revoke)
+        group.permissions.add(legacy_manage, legacy_grant, legacy_revoke)
+
+        question_pool = QuestionPool.objects.create(name="Legacy-Poolrechte")
+        legacy_delete = Permission.objects.create(
+            content_type=content_type,
+            codename=f"can_delete_questions_pool_{question_pool.pk}",
+            name="Fragen löschen",
+        )
+        user.user_permissions.add(legacy_delete)
+        group.permissions.add(legacy_delete)
+
+        legacy_module.split_legacy_permissions(
+            apps, SimpleNamespace(connection=connection)
+        )
+
+        self.assertFalse(
+            Permission.objects.filter(
+                content_type=content_type, codename="can_manage_users"
+            ).exists()
+        )
+        for codename in (
+            "can_view_users",
+            "can_create_users",
+            "can_update_users",
+            "can_view_user_permissions",
+            "can_assign_user_groups",
+            "can_unassign_user_groups",
+        ):
+            migrated = Permission.objects.get(
+                content_type=content_type, codename=codename
+            )
+            self.assertTrue(user.user_permissions.filter(pk=migrated.pk).exists())
+            self.assertTrue(group.permissions.filter(pk=migrated.pk).exists())
+        self.assertTrue(user.user_permissions.filter(pk=legacy_grant.pk).exists())
+        self.assertTrue(user.user_permissions.filter(pk=legacy_revoke.pk).exists())
+        for action in ("delete_single", "delete_bulk"):
+            migrated = Permission.objects.get(
+                content_type=content_type,
+                codename=pool_permission_codename(action, question_pool),
+            )
+            self.assertTrue(user.user_permissions.filter(pk=migrated.pk).exists())
+            self.assertTrue(group.permissions.filter(pk=migrated.pk).exists())
 
     def test_user_permission_grant_and_revoke_are_separately_authorized(self):
         """Nutzerrechte und Gruppen lassen sich nur mit Grant-/Revoke-Recht ändern."""
@@ -600,7 +682,12 @@ class RightsAndAuditTests(TestCase):
         manager.user_permissions.add(
             *Permission.objects.filter(
                 content_type__app_label="core",
-                codename__in=["can_manage_users", "can_grant_user_permissions"],
+                codename__in=[
+                    "can_view_user_permissions",
+                    "can_view_users",
+                    "can_grant_user_permissions",
+                    "can_assign_user_groups",
+                ],
             )
         )
         employee = get_user_model().objects.create_user(
@@ -688,6 +775,16 @@ class RightsAndAuditTests(TestCase):
             Permission.objects.get(
                 content_type__app_label="core",
                 codename="can_revoke_user_permissions",
+            ),
+            Permission.objects.get(
+                content_type__app_label="core",
+                codename="can_unassign_user_groups",
+            ),
+        )
+        manager.user_permissions.remove(
+            Permission.objects.get(
+                content_type__app_label="core",
+                codename="can_assign_user_groups",
             )
         )
         response = self.client.post(
@@ -721,7 +818,11 @@ class RightsAndAuditTests(TestCase):
         manager.user_permissions.add(
             *Permission.objects.filter(
                 content_type__app_label="core",
-                codename__in=["can_manage_users", "can_grant_administrator"],
+                codename__in=[
+                    "can_view_users",
+                    "can_update_user_first_name",
+                    "can_grant_administrator",
+                ],
             )
         )
         employee = get_user_model().objects.create_user(
@@ -862,3 +963,144 @@ class RightsAndAuditTests(TestCase):
         self.assertEqual(deleted, 2)
         self.assertEqual(AuditLog.objects.count(), 2)
         self.assertFalse(AuditLog.objects.filter(pk=entries[0].pk).exists())
+
+
+class FieldLevelPermissionTests(TestCase):
+    """Prüft, dass Konto-, Gruppen-, Pool- und Fragenfelder einzeln freigegeben werden."""
+
+    def _grant(self, user, *codenames):
+        user.user_permissions.add(
+            *Permission.objects.filter(
+                content_type__app_label="core", codename__in=codenames
+            )
+        )
+
+    def test_user_fields_are_updated_only_with_their_own_permission(self):
+        manager = get_user_model().objects.create_user(username="field-manager")
+        self._grant(manager, "can_view_users", "can_update_user_first_name")
+        target = get_user_model().objects.create_user(
+            username="field-target", first_name="Alt", last_name="Name"
+        )
+        self.client.force_login(manager)
+        response = self.client.post(
+            reverse("user_edit", args=[target.pk]),
+            {
+                "username": "hijacked",
+                "first_name": "Neu",
+                "last_name": "Geändert",
+                "is_active": "",
+                "password": "neues-passwort-123",
+            },
+        )
+        self.assertRedirects(response, reverse("users_dashboard"))
+        target.refresh_from_db()
+        self.assertEqual(target.first_name, "Neu")
+        self.assertEqual(target.username, "field-target")
+        self.assertEqual(target.last_name, "Name")
+        self.assertTrue(target.is_active)
+        self.assertFalse(target.check_password("neues-passwort-123"))
+
+    def test_user_edit_is_forbidden_without_any_update_permission(self):
+        manager = get_user_model().objects.create_user(username="no-update-manager")
+        self._grant(manager, "can_view_users")
+        target = get_user_model().objects.create_user(username="no-update-target")
+        self.client.force_login(manager)
+        self.assertEqual(
+            self.client.get(reverse("user_edit", args=[target.pk])).status_code, 403
+        )
+
+    def test_deactivation_needs_its_own_permission(self):
+        manager = get_user_model().objects.create_user(username="deactivator")
+        self._grant(manager, "can_view_users", "can_deactivate_users")
+        target = get_user_model().objects.create_user(username="deactivate-target")
+        self.client.force_login(manager)
+        self.client.post(
+            reverse("user_edit", args=[target.pk]),
+            {"username": "deactivate-target", "is_active": ""},
+        )
+        target.refresh_from_db()
+        self.assertFalse(target.is_active)
+
+    def test_group_name_and_priority_are_separate_permissions(self):
+        manager = get_user_model().objects.create_user(username="group-manager")
+        self._grant(
+            manager, "can_view_permission_groups", "can_update_permission_group_priority"
+        )
+        group = Group.objects.create(name="Alte Gruppe")
+        self.client.force_login(manager)
+        response = self.client.post(
+            reverse("permission_group_edit", args=[group.pk]),
+            {"name": "Neuer Name", "sort_order": 7},
+        )
+        self.assertRedirects(response, reverse("permissions_dashboard"))
+        group.refresh_from_db()
+        self.assertEqual(group.name, "Alte Gruppe")
+        self.assertEqual(group.sort_config.sort_order, 7)
+
+    def test_pool_fields_are_updated_only_with_their_own_permission(self):
+        manager = get_user_model().objects.create_user(username="pool-manager")
+        self._grant(manager, "can_view_question_pools", "can_update_pool_name")
+        pool = QuestionPool.objects.create(name="Alt", pass_percentage=50)
+        self.client.force_login(manager)
+        response = self.client.post(
+            reverse("pool_edit", args=[pool.pk]),
+            {
+                "name": "Neu",
+                "description": "x",
+                "test_question_count": pool.test_question_count,
+                "pass_percentage": 99,
+                "minimum_time_limit_minutes": pool.minimum_time_limit_minutes,
+                "maximum_time_limit_minutes": pool.maximum_time_limit_minutes,
+                "start_info_text": pool.start_info_text,
+                "start_confirmations": pool.start_confirmations,
+            },
+        )
+        self.assertRedirects(response, reverse("pools_dashboard"))
+        pool.refresh_from_db()
+        self.assertEqual(pool.name, "Neu")
+        self.assertEqual(pool.pass_percentage, 50)
+
+    def test_pool_actions_do_not_require_view_permission(self):
+        employee = get_user_model().objects.create_user(username="export-only")
+        pool = QuestionPool.objects.create(name="Export ohne Ansicht")
+        employee.user_permissions.add(
+            Permission.objects.get(
+                codename=pool_permission_codename("export", pool)
+            )
+        )
+        self.client.force_login(employee)
+        self.assertEqual(
+            self.client.get(reverse("question_export", args=[pool.pk])).status_code,
+            200,
+        )
+
+    def test_pinning_and_answer_key_need_their_own_pool_permissions(self):
+        employee = get_user_model().objects.create_user(username="question-editor")
+        pool = QuestionPool.objects.create(name="Feldrechte")
+        question = Question.objects.create(
+            question_pool=pool,
+            text="Frage?",
+            question_type=Question.Type.SHORT,
+            points=1,
+            answer_key="alt",
+        )
+        employee.user_permissions.add(
+            Permission.objects.get(codename=pool_permission_codename("update", pool))
+        )
+        self.client.force_login(employee)
+        self.client.post(
+            reverse("question_edit", args=[question.pk]),
+            {
+                "question_pool": pool.pk,
+                "text": "Neu?",
+                "question_type": Question.Type.SHORT,
+                "points": 1,
+                "answer_key": "geändert",
+                "is_pinned": "on",
+                "option_count": 2,
+            },
+        )
+        question.refresh_from_db()
+        self.assertEqual(question.text, "Neu?")
+        self.assertEqual(question.answer_key, "alt")
+        self.assertFalse(question.is_pinned)

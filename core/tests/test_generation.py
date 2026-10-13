@@ -150,11 +150,15 @@ class TestGenerationTests(TestCase):
         question_pool = QuestionPool.objects.create(name="Dynamik-Prüfung")
         actions = [
             "view",
-            "edit",
-            "import_export",
+            "create",
+            "update",
+            "import",
+            "export",
             "generate",
-            "submissions",
-            "delete",
+            "view_submissions",
+            "grade",
+            "delete_single",
+            "delete_bulk",
             "rename_examinee",
         ]
         permissions = [
@@ -164,7 +168,7 @@ class TestGenerationTests(TestCase):
             )
             for action in actions
         ]
-        self.assertEqual(len(permissions), 7)
+        self.assertEqual(len(permissions), 11)
         self.assertTrue(
             all(question_pool.name in permission.name for permission in permissions)
         )
@@ -187,6 +191,8 @@ class TestGenerationTests(TestCase):
         )
         another_pool = QuestionPool.objects.create(name="Nicht Zugewiesen")
         self.assertTrue(has_pool_access(administrator, another_pool, "view"))
-        self.assertTrue(has_pool_access(administrator, another_pool, "edit"))
+        self.assertTrue(has_pool_access(administrator, another_pool, "update"))
         self.assertTrue(has_pool_access(administrator, another_pool, "generate"))
-        self.assertTrue(has_pool_access(administrator, another_pool, "submissions"))
+        self.assertTrue(
+            has_pool_access(administrator, another_pool, "view_submissions")
+        )

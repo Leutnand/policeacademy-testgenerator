@@ -299,6 +299,32 @@
     grid-template-columns: 1fr;
   }
 
+  .dual-listbox {
+    grid-template-columns: 1fr;
+  }
+
+  .dual-listbox-controls {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    order: 2;
+  }
+
+  .dual-listbox-column:last-of-type {
+    order: 3;
+  }
+
+  .dual-listbox {
+    grid-template-columns: 1fr;
+  }
+
+  .dual-listbox-controls {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    order: 2;
+  }
+
+  .dual-listbox-column:last-of-type {
+    order: 3;
+  }
+
   .permission-group-row {
     grid-template-columns: 36px minmax(0, 1fr);
   }

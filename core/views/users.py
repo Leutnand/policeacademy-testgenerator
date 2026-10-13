@@ -3,33 +3,62 @@
 from django.contrib import messages
 from django.contrib.auth.models import User
 from django.db import transaction
+from django.db.models import Value
+from django.db.models.functions import Coalesce
+from django.contrib.auth.models import Group
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.debug import sensitive_post_parameters
 from django.views.decorators.http import require_http_methods, require_POST
 from ..forms import StaffUserForm
 from ..audit import record_event
 from ..models import AuditLog
-from ..permissions import has_access, is_administrator
+from ..permissions import USER_UPDATE_CAPABILITIES, has_access, is_administrator
 from .common import require_capability, _effective_academy_permissions
 
 
-@require_capability("can_manage_users")
+@require_capability("view_users")
 def users_dashboard(request):
-    """Listet Mitarbeiterkonten und deren Aktivierungsstatus."""
+    """Listet Mitarbeiter nach Gruppenpriorität und alphabetisch."""
     users = User.objects.prefetch_related("groups", "user_permissions").order_by(
         "username"
+    )
+    groups = (
+        Group.objects.exclude(name="Administrator")
+        .all()
+        .annotate(
+            display_order=Coalesce("sort_config__sort_order", Value(0)),
+        )
+        .order_by("display_order", "name")
+    )
+    group_priorities = {
+        group.pk: group.display_order
+        for group in groups
+    }
+    rows = sorted(
+        users,
+        key=lambda user: (
+            0 if user.is_superuser else 1,
+            min(
+                (
+                    group_priorities.get(group.pk, 0)
+                    for group in user.groups.all()
+                ),
+                default=10**9,
+            ),
+            (user.get_full_name() or user.username).casefold(),
+        ),
     )
     return render(
         request,
         "core/users.html",
         {
             "users": users,
+            "staff_rows": rows,
             "can_delete_admin_users": is_administrator(request.user),
         },
     )
 
 
-@require_capability("can_manage_users")
 @require_capability("can_delete_users")
 @require_POST
 def user_delete(request, pk):
@@ -68,7 +97,7 @@ def user_delete(request, pk):
     return redirect("users_dashboard")
 
 
-@require_capability("can_manage_users")
+@require_capability("create_users")
 @require_http_methods(["GET", "POST"])
 @sensitive_post_parameters("password")
 def user_create(request):
@@ -106,7 +135,7 @@ def user_create(request):
     )
 
 
-@require_capability("can_manage_users")
+@require_capability(*USER_UPDATE_CAPABILITIES)
 @require_http_methods(["GET", "POST"])
 @sensitive_post_parameters("password")
 def user_edit(request, pk):
