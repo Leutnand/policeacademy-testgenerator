@@ -76,16 +76,15 @@ Jede Aktion ist durch ein eigenes Recht geschützt: Anzeigen, Anlegen, Ändern,
 Einzellöschen, Mehrfachlöschen, Import, Export, Bewerten und Rechtevergabe
 sind nicht zu einem Sammelrecht zusammengefasst. Die vollständigen globalen
 und poolbezogenen Codenamen und ihre Wirkungen stehen in
-[docs/berechtigungen.md](docs/berechtigungen.md). Die Rechtegruppenverwaltung
-verwendet eine durchsuchbare Dual-Listbox; Direktrechte werden Mitarbeitern
-als einzelne Checkboxen angezeigt. Alte Sammelrechte werden bei der Migration
+[docs/berechtigungen.md](docs/berechtigungen.md). Rechtegruppen und
+Mitarbeiter-Direktrechte werden gleich als einzelne Checkboxen angezeigt. Alte Sammelrechte werden bei der Migration
 in Einzelrechte überführt und danach entfernt.
 
 Eine Testabgabe gehört zu genau einem Pool, der beim Erzeugen am Test gespeichert wird. Die Auswertungsübersicht und Detail-URLs filtern deshalb nach der jeweiligen Poolberechtigung; eine Berechtigung für Pool A zeigt keine Tests aus Pool B. Anzeigen und Bewerten sind getrennte Rechte. Administratoren sehen alle Pools.
 
 **Verwaltung**
 
-Unter **Einstellungen** können entsprechend berechtigte Mitarbeiter zwischen Mitarbeiterverwaltung und Rechtegruppen wechseln. Eigene Gruppen lassen sich erstellen, bearbeiten, mit einer Sortierzahl versehen, mit globalen und dynamischen Poolrechten ausstatten und löschen. Die Gruppenliste folgt aufsteigend der Priorität; bei Gleichstand entscheidet der Gruppenname. Die Mitarbeiterübersicht sortiert Konten nach der höchsten Priorität ihrer Rechtegruppen und anschließend alphabetisch, ohne zusätzliche Gruppentrennzeilen. Gruppenzugehörigkeiten und direkte Mitarbeiterrechte lassen sich kombinieren. Direktrechte erscheinen als einzelne Checkboxen, Gruppenrechte als durchsuchbare Dual-Listbox. Niemand kann den eigenen Administratorstatus entziehen. Bestehende Fragen und Tests wurden beim Pool-Backfill dem initialen Pool **Einstellungstest** zugeordnet.
+Unter **Einstellungen** können entsprechend berechtigte Mitarbeiter zwischen Mitarbeiterverwaltung und Rechtegruppen wechseln. Eigene Gruppen lassen sich erstellen, bearbeiten, mit einer Sortierzahl versehen, mit globalen und dynamischen Poolrechten ausstatten und löschen. Die Gruppenliste folgt aufsteigend der Priorität; bei Gleichstand entscheidet der Gruppenname. Die Mitarbeiterübersicht sortiert Konten nach der höchsten Priorität ihrer Rechtegruppen und anschließend alphabetisch, ohne zusätzliche Gruppentrennzeilen. Gruppenzugehörigkeiten und direkte Mitarbeiterrechte lassen sich kombinieren. Direktrechte und Gruppenrechte erscheinen gleichermaßen als einzelne Checkboxen. Niemand kann den eigenen Administratorstatus entziehen. Bestehende Fragen und Tests wurden beim Pool-Backfill dem initialen Pool **Einstellungstest** zugeordnet.
 
 ## Systemprotokoll
 

@@ -9,14 +9,10 @@ gehören Lesen, Anlegen, Ändern, einzelnes und mehrfaches Löschen, Import,
 Export, Testgenerierung, Bewertung sowie das Vergeben und Entziehen von
 Rechten. Poolbezogene Rechte enthalten weiterhin die Pool-ID.
 
-Die Rechtegruppenverwaltung verwendet eine Dual-Listbox. Links stehen alle
-verfügbaren Einzelrechte, rechts die aktuelle Gruppenauswahl. Einträge können
-einzeln oder vollständig per Pfeiltasten, Doppelklick oder Tastaturbedienung
-verschoben werden; die linke Liste kann gefiltert werden. Direkte
-Mitarbeiterrechte werden dagegen bewusst als übersichtliche, nach Wirkungsbereich
-und Pool gruppierte Einzel-Checkboxen dargestellt, damit jedes Recht direkt
-angeklickt und geprüft werden kann. Die serverseitige Formularvalidierung bleibt
-maßgeblich.
+Rechtegruppen und direkte Mitarbeiterrechte werden gleich dargestellt: als
+übersichtliche, nach Wirkungsbereich und Pool gruppierte Einzel-Checkboxen,
+damit jedes Recht direkt angeklickt und geprüft werden kann. Die serverseitige
+Formularvalidierung bleibt maßgeblich.
 
 Die früheren Sammelrechte werden durch die Datenmigration auf passende
 Einzelrechte aufgeteilt und anschließend entfernt. Alte Sammelrechte sind
