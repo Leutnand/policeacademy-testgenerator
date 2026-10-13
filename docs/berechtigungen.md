@@ -11,7 +11,10 @@ Rechten. Poolbezogene Rechte enthalten weiterhin die Pool-ID.
 
 Rechtegruppen und direkte Mitarbeiterrechte werden gleich dargestellt: als
 übersichtliche, nach Wirkungsbereich und Pool gruppierte Einzel-Checkboxen,
-damit jedes Recht direkt angeklickt und geprüft werden kann. Die serverseitige
+damit jedes Recht direkt angeklickt und geprüft werden kann. Die globalen
+Rechte stehen in festen Themenbereichen (Mitarbeiter, Rechtegruppen,
+Rechtevergabe, Fragenpool-Verwaltung, Tool-Einstellungen, Tests,
+Systemprotokoll), danach folgen die Rechte je Pool. Die serverseitige
 Formularvalidierung bleibt maßgeblich.
 
 Die früheren Sammelrechte werden durch die Datenmigration auf passende

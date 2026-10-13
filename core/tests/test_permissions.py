@@ -429,7 +429,7 @@ class PermissionTests(TestCase):
         self.assertNotContains(group_form, "Django-Admin")
         self.assertNotContains(group_form, "django.contrib.sessions")
         section_titles = list(group_form.context["permission_sections"])
-        self.assertEqual(section_titles[0]["title"], "Globale Academy-Rechte")
+        self.assertEqual(section_titles[0]["title"], "Mitarbeiter")
         pool_titles = [
             section["title"]
             for section in section_titles

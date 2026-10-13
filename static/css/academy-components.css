@@ -714,6 +714,116 @@
   line-height: 1.4;
 }
 
+/* Rechte-Editor: Sprungleiste, einklappbare Bereiche, Zähler */
+.permission-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 0;
+  background: var(--surface, #1b2a3f);
+  border-bottom: 1px solid var(--line, rgba(255, 255, 255, .12));
+}
+
+.permission-jump {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.permission-jump a {
+  padding: 4px 10px;
+  border: 1px solid var(--line, rgba(255, 255, 255, .2));
+  border-radius: 999px;
+  color: var(--text);
+  font-size: 12px;
+  text-decoration: none;
+}
+
+.permission-jump a:hover {
+  background: var(--surface-soft);
+}
+
+.permission-toolbar-actions,
+.permission-section-tools {
+  display: flex;
+  gap: 6px;
+}
+
+.permission-toolbar .button,
+.permission-section-tools .button {
+  min-height: 0;
+  padding: 4px 10px;
+  font-size: 12px;
+}
+
+.permission-kind-heading {
+  margin: 26px 0 4px;
+  color: var(--lapd-navy);
+  font: 700 20px 'Barlow Condensed', sans-serif;
+  text-transform: uppercase;
+}
+
+:root[data-theme="dark"] .permission-kind-heading {
+  color: #e6cf84;
+}
+
+details.direct-permission-section {
+  margin: 12px 0;
+  padding: 0 16px 14px;
+  border: 1px solid var(--line, rgba(255, 255, 255, .15));
+  border-radius: 6px;
+  scroll-margin-top: 70px;
+}
+
+details.direct-permission-section>summary {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 0;
+  cursor: pointer;
+  list-style: none;
+}
+
+details.direct-permission-section>summary::-webkit-details-marker {
+  display: none;
+}
+
+details.direct-permission-section>summary::before {
+  content: '▸';
+  color: var(--muted);
+}
+
+details.direct-permission-section[open]>summary::before {
+  content: '▾';
+}
+
+.permission-section-title {
+  flex: 1;
+  color: var(--lapd-navy);
+  font: 700 17px 'Barlow Condensed', sans-serif;
+  text-transform: uppercase;
+}
+
+:root[data-theme="dark"] .permission-section-title {
+  color: #e6cf84;
+}
+
+.permission-section-count {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.permission-subgroup {
+  margin: 14px 0 6px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+
 
 
 .role-lock-note {

@@ -168,6 +168,88 @@ class QuestionForm(forms.ModelForm):
         return question
 
 
+# Themenbereiche der globalen Rechte in fester Anzeigereihenfolge
+GLOBAL_PERMISSION_SECTIONS = (
+    (
+        "Mitarbeiter",
+        (
+            "can_view_users",
+            "can_create_users",
+            "can_update_user_username",
+            "can_update_user_first_name",
+            "can_update_user_last_name",
+            "can_set_user_passwords",
+            "can_activate_users",
+            "can_deactivate_users",
+            "can_delete_users",
+        ),
+    ),
+    (
+        "Rechtegruppen",
+        (
+            "can_view_permission_groups",
+            "can_create_permission_groups",
+            "can_rename_permission_groups",
+            "can_update_permission_group_priority",
+            "can_delete_permission_groups",
+        ),
+    ),
+    (
+        "Rechtevergabe",
+        (
+            "can_view_user_permissions",
+            "can_assign_user_groups",
+            "can_unassign_user_groups",
+            "can_grant_user_permissions",
+            "can_revoke_user_permissions",
+            "can_grant_group_permissions",
+            "can_revoke_group_permissions",
+            "can_grant_administrator",
+            "can_revoke_administrator",
+        ),
+    ),
+    (
+        "Fragenpool-Verwaltung",
+        (
+            "can_view_question_pools",
+            "can_create_question_pools",
+            "can_update_pool_name",
+            "can_update_pool_description",
+            "can_update_pool_question_count",
+            "can_update_pool_pass_percentage",
+            "can_update_pool_min_time_limit",
+            "can_update_pool_max_time_limit",
+            "can_update_pool_start_info_text",
+            "can_update_pool_start_confirmations",
+            "can_delete_question_pools",
+        ),
+    ),
+    (
+        "Tool-Einstellungen",
+        (
+            "can_view_tool_settings",
+            "can_update_site_name",
+            "can_update_department_name",
+            "can_update_site_icon",
+            "can_update_login_heading",
+            "can_update_login_text",
+            "can_update_privacy_policy",
+            "can_update_imprint",
+        ),
+    ),
+    ("Tests", ("can_delete_tests",)),
+    (
+        "Systemprotokoll",
+        ("can_view_audit_logs", "can_export_audit_logs", "can_clear_audit_logs"),
+    ),
+)
+GLOBAL_SECTION_LOOKUP = {
+    codename: (section_index, position)
+    for section_index, (_, codenames) in enumerate(GLOBAL_PERMISSION_SECTIONS)
+    for position, codename in enumerate(codenames)
+}
+
+
 def add_permission_checkboxes(form, selected_ids=()):
     """Bietet ausschließlich tatsächlich verwendete Academy-Rechte zur Auswahl an."""
     academy_permissions = Q(
@@ -195,11 +277,21 @@ def add_permission_checkboxes(form, selected_ids=()):
         code.rsplit(".", 1)[-1]: index
         for index, code in enumerate(GLOBAL_PERMISSION_CODES.values())
     }
+    # Poolrechte: Reihenfolge und Unterthema (Fragen bzw. Tests & Auswertung)
     pool_action_order = {
-        action: index for index, action in enumerate(POOL_PERMISSION_PREFIXES)
+        action: index
+        for index, action in enumerate(
+            (
+                "view", "create", "update", "import", "export", "pin",
+                "edit_answer_key", "delete_single", "delete_bulk",
+                "generate", "view_submissions", "grade", "rename_examinee",
+            )
+        )
     }
+    pool_test_actions = {"generate", "view_submissions", "grade", "rename_examinee"}
     global_help = {
         "can_view_users": "Zeigt die Mitarbeiterübersicht.",
+        "can_view_user_permissions": "Zeigt die Rechte und Gruppen eines Mitarbeiters an.",
         "can_create_users": "Erlaubt das Anlegen von Mitarbeiterkonten.",
         "can_update_user_username": "Ändert den Benutzernamen (Anmeldenamen) eines Mitarbeiters.",
         "can_update_user_first_name": "Ändert den Vornamen eines Mitarbeiters.",
@@ -225,13 +317,13 @@ def add_permission_checkboxes(form, selected_ids=()):
         "can_view_audit_logs": "Zeigt Zugriffe und Änderungen im Systemprotokoll an.",
         "can_export_audit_logs": "Exportiert die gefilterten Audit-Einträge als CSV.",
         "can_clear_audit_logs": "Leert alle bisherigen Logeinträge. Der Löschvorgang wird selbst protokolliert; zusätzlich ist Leserecht nötig.",
-        "can_grant_user_permissions": "Vergibt Gruppenmitgliedschaften und direkte Rechte. Erfordert Mitarbeiterverwaltung und erlaubt kein Entziehen.",
-        "can_revoke_user_permissions": "Entzieht Gruppenmitgliedschaften und direkte Rechte. Erfordert Mitarbeiterverwaltung und erlaubt kein Vergeben.",
+        "can_grant_user_permissions": "Vergibt Gruppenmitgliedschaften und direkte Rechte.",
+        "can_revoke_user_permissions": "Entzieht Gruppenmitgliedschaften und direkte Rechte.",
         "can_assign_user_groups": "Weist Mitarbeitenden Rechtegruppen zu.",
         "can_unassign_user_groups": "Entzieht Mitarbeitenden Rechtegruppen.",
         "can_grant_group_permissions": "Fügt einer Rechtegruppe einzelne Berechtigungen hinzu.",
         "can_revoke_group_permissions": "Entzieht einer Rechtegruppe einzelne Berechtigungen.",
-        "can_grant_administrator": "Vergibt einer anderen Person vollständigen Administratorzugriff. Erfordert Mitarbeiterverwaltung.",
+        "can_grant_administrator": "Vergibt einer anderen Person vollständigen Administratorzugriff.",
         "can_revoke_administrator": "Entzieht einer anderen Person den Administratorzugriff. Der eigene Status bleibt geschützt.",
         "can_view_question_pools": "Zeigt die Fragenpoolverwaltung.",
         "can_create_question_pools": "Legt einen neuen Fragenpool an.",
@@ -272,15 +364,29 @@ def add_permission_checkboxes(form, selected_ids=()):
         if pool_id and pool_id in pools:
             section_key = (1, pools[pool_id].name.casefold())
             section_title = f"Pool · {pools[pool_id].name}"
-            field_order = next(
-                pool_action_order[action]
+            section_kind = "pool"
+            pool_action = next(
+                action
                 for action, prefix in POOL_PERMISSION_PREFIXES.items()
                 if permission.codename.startswith(prefix)
             )
+            field_order = pool_action_order[pool_action]
+            subgroup = (
+                "Tests & Auswertung" if pool_action in pool_test_actions else "Fragen"
+            )
         else:
-            section_key = (0, "")
-            section_title = "Globale Academy-Rechte"
-            field_order = global_codes[permission.codename]
+            # Globale Rechte werden nach Themenbereich gruppiert und dort sortiert
+            section_index, field_order = GLOBAL_SECTION_LOOKUP.get(
+                permission.codename, (len(GLOBAL_PERMISSION_SECTIONS), global_codes[permission.codename])
+            )
+            section_key = (0, f"{section_index:02d}")
+            section_kind = "global"
+            subgroup = ""
+            section_title = (
+                GLOBAL_PERMISSION_SECTIONS[section_index][0]
+                if section_index < len(GLOBAL_PERMISSION_SECTIONS)
+                else "Weitere Rechte"
+            )
         if pool_id and pool_id in pools:
             pool_action = next(
                 action_name
@@ -304,10 +410,13 @@ def add_permission_checkboxes(form, selected_ids=()):
             {
                 "title": section_title,
                 "order": section_key,
+                "kind": section_kind,
+                "anchor": f"perm-section-{len(sections)}",
                 "fields": [],
             },
         )["fields"].append(
             {
+                "subgroup": subgroup,
                 "name": field_name,
                 "permission": permission,
                 "permission_label": permission.name,
@@ -323,6 +432,16 @@ def add_permission_checkboxes(form, selected_ids=()):
         section["fields"].sort(
             key=lambda item: (item["sort_order"], item["permission_label"].casefold())
         )
+    # Ankernamen nach der endgültigen Sortierung vergeben, damit die Sprungleiste stimmt
+    for index, section in enumerate(form.permission_sections):
+        section["anchor"] = f"perm-section-{index}"
+        section["total"] = len(section["fields"])
+    form.global_permission_sections = [
+        s for s in form.permission_sections if s["kind"] == "global"
+    ]
+    form.pool_permission_sections = [
+        s for s in form.permission_sections if s["kind"] == "pool"
+    ]
     form.permission_ids = {
         int(name.removeprefix("permission_")): name
         for name in form.fields

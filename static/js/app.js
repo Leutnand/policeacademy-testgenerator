@@ -1,5 +1,40 @@
 /* Theme-Wechsel und Kopieraktionen der Oberfläche. */
 document.addEventListener('DOMContentLoaded', () => {
+  /* Rechte-Editor: Zähler je Bereich, Alle/Keine, Auf-/Zuklappen. */
+  const sections = document.querySelectorAll('[data-permission-section]');
+  const updateCount = (section) => {
+    const boxes = section.querySelectorAll('input[type="checkbox"]');
+    const checked = [...boxes].filter((box) => box.checked).length;
+    section.querySelector('[data-permission-count]').textContent = `${checked} / ${boxes.length}`;
+  };
+  sections.forEach((section) => {
+    updateCount(section);
+    section.addEventListener('change', () => updateCount(section));
+    section.querySelectorAll('[data-permission-all]').forEach((button) => {
+      button.addEventListener('click', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        section.querySelectorAll('input[type="checkbox"]').forEach((box) => {
+          box.checked = button.dataset.permissionAll === '1';
+        });
+        updateCount(section);
+      });
+    });
+  });
+  document.querySelectorAll('[data-permission-expand]').forEach((button) => {
+    button.addEventListener('click', () => {
+      sections.forEach((section) => {
+        section.open = button.dataset.permissionExpand === 'open';
+      });
+    });
+  });
+  document.querySelectorAll('.permission-jump a').forEach((link) => {
+    link.addEventListener('click', () => {
+      const target = document.querySelector(link.getAttribute('href'));
+      if (target) target.open = true;
+    });
+  });
+
   const root = document.documentElement;
   const toggle = document.querySelector('#theme-toggle');
   const icon = document.querySelector('#theme-icon');

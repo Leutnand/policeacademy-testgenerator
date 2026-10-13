@@ -1,0 +1,16 @@
+{# Gemeinsames Rechte-Raster: Sprungleiste, einklappbare Themenbereiche, Alle/Keine je Bereich #}
+<div class="permission-toolbar" data-permission-toolbar>
+  <nav class="permission-jump" aria-label="Themenbereiche">{% for section in sections %}<a href="#{{ section.anchor }}">{{ section.title }}</a>{% endfor %}</nav>
+  <div class="permission-toolbar-actions"><button type="button" class="button quiet" data-permission-expand="open">Alle aufklappen</button><button type="button" class="button quiet" data-permission-expand="close">Alle zuklappen</button></div>
+</div>
+{% for section in sections %}
+  {% ifchanged section.kind %}<h3 class="permission-kind-heading">{% if section.kind == "global" %}Allgemeine Rechte{% else %}Rechte je Fragenpool{% endif %}</h3>{% endifchanged %}
+  <details class="permission-set direct-permission-section" id="{{ section.anchor }}" data-permission-section {% if section.kind == "global" %}open{% endif %}>
+    <summary><span class="permission-section-title">{{ section.title }}</span><span class="permission-section-count" data-permission-count>0 / {{ section.total }}</span><span class="permission-section-tools"><button type="button" class="button quiet" data-permission-all="1">Alle</button><button type="button" class="button quiet" data-permission-all="0">Keine</button></span></summary>
+    {% regroup section.fields by subgroup as subgroups %}
+    {% for subgroup in subgroups %}
+      {% if subgroup.grouper %}<h4 class="permission-subgroup">{{ subgroup.grouper }}</h4>{% endif %}
+      <div class="permission-grid">{% for item in subgroup.list %}<label class="permission-choice">{{ item.bound_field }}<span><strong>{{ item.permission_label }}</strong><small class="permission-help">{{ item.permission_help }}</small></span></label>{% endfor %}</div>
+    {% endfor %}
+  </details>
+{% empty %}<p class="muted">Im System sind keine Berechtigungen verfügbar.</p>{% endfor %}
