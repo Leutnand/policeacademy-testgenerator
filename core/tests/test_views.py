@@ -442,6 +442,9 @@ class SubmissionAndPoolViewTests(TestCase):
         )
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Einladung kopieren")
+        self.assertContains(response, "Sergeant-Test Web&#10;Testlink: ")
+        self.assertContains(response, "&#10;Einmalpasswort: ")
+        self.assertContains(response, "&#10;Zeitlimit: 30 Minuten")
         self.assertContains(response, "Sergeant-Test Web: 1 Fragen · 0 davon verankert")
         test = TestSession.objects.get(question_pool=second_pool)
         self.assertEqual(
