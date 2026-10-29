@@ -2,6 +2,8 @@
 
 import os
 from pathlib import Path
+
+import dj_database_url
 from django.core.exceptions import ImproperlyConfigured
 
 
@@ -100,12 +102,27 @@ STORAGES = {
         ),
     },
 }
-DATABASES = {
-    "default": {
-        "ENGINE": "django.db.backends.sqlite3",
-        "NAME": os.environ.get("DATABASE_PATH", str(BASE_DIR / "db.sqlite3")),
+DATABASE_URL = os.environ.get("DATABASE_URL", "").strip()
+if DATABASE_URL:
+    DATABASES = {
+        "default": dj_database_url.parse(
+            DATABASE_URL, conn_max_age=60, conn_health_checks=True
+        )
     }
-}
+else:
+    DATABASES = {
+        "default": {
+            "ENGINE": "django.db.backends.sqlite3",
+            "NAME": os.environ.get("DATABASE_PATH", str(BASE_DIR / "db.sqlite3")),
+            "OPTIONS": {
+                # WAL erlaubt parallele Leser neben einem Schreiber; IMMEDIATE und
+                # der Timeout vermeiden "database is locked" bei gleichzeitigen Schreibvorgängen.
+                "timeout": 20,
+                "transaction_mode": "IMMEDIATE",
+                "init_command": "PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL;",
+            },
+        }
+    }
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 LOGIN_URL = "login"
 LOGIN_REDIRECT_URL = "dashboard"
@@ -127,6 +144,16 @@ SECURE_HSTS_SECONDS = int(
 )
 SECURE_HSTS_INCLUDE_SUBDOMAINS = SECURE_HSTS_SECONDS > 0
 SECURE_HSTS_PRELOAD = SECURE_HSTS_SECONDS > 0
+OTP_MAX_FAILED_ATTEMPTS = int(os.environ.get("OTP_MAX_FAILED_ATTEMPTS", "5"))
+LOGIN_MAX_FAILURES = int(os.environ.get("LOGIN_MAX_FAILURES", "5"))
+LOGIN_FAILURE_WINDOW_MINUTES = int(os.environ.get("LOGIN_FAILURE_WINDOW_MINUTES", "15"))
+if min(OTP_MAX_FAILED_ATTEMPTS, LOGIN_MAX_FAILURES, LOGIN_FAILURE_WINDOW_MINUTES) < 1:
+    raise ImproperlyConfigured(
+        "OTP-Fehlversuche, Login-Fehlversuche und Sperrfenster müssen mindestens 1 sein."
+    )
+AUDIT_LOG_REQUESTS = os.environ.get("AUDIT_LOG_REQUESTS", "all").strip().lower()
+if AUDIT_LOG_REQUESTS not in {"all", "changes"}:
+    raise ImproperlyConfigured("AUDIT_LOG_REQUESTS muss 'all' oder 'changes' sein.")
 AUDIT_LOG_RETENTION_DAYS = int(os.environ.get("AUDIT_LOG_RETENTION_DAYS", "180"))
 AUDIT_LOG_MAX_ENTRIES = int(os.environ.get("AUDIT_LOG_MAX_ENTRIES", "50000"))
 if AUDIT_LOG_RETENTION_DAYS < 1 or AUDIT_LOG_MAX_ENTRIES < 1:

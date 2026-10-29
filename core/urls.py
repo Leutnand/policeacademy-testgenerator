@@ -1,6 +1,7 @@
 """URL-Muster der Mitarbeiteroberfläche und des prüflingsseitigen Testablaufs."""
 
 from django.urls import path
+
 from . import views
 
 urlpatterns = [

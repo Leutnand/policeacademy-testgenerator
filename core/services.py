@@ -3,8 +3,12 @@
 import secrets
 import string
 from decimal import ROUND_HALF_UP, Decimal
+from typing import Any
+
+from django.contrib.auth.base_user import AbstractBaseUser
 from django.contrib.auth.hashers import make_password
 from django.db import transaction
+
 from .models import Question, QuestionPool, TestQuestion, TestSession
 
 
@@ -12,7 +16,11 @@ class TestGenerationError(ValueError):
     """Fachlicher Fehler, wenn die angeforderte Fragenanzahl unmöglich ist."""
 
 
-def generate_test(question_count, creator, question_pool):
+def generate_test(
+    question_count: int | None,
+    creator: AbstractBaseUser | None,
+    question_pool: QuestionPool,
+) -> tuple[TestSession, str]:
     """Wählt Fragen ausschließlich aus dem gewählten Prüfungstyp aus.
 
     Ohne explizite Anzahl gilt die feste Fragenzahl des Pools.
@@ -60,7 +68,7 @@ def generate_test(question_count, creator, question_pool):
     return test, otp
 
 
-def score_percentage(earned, possible):
+def score_percentage(earned: Decimal | int, possible: Decimal | int) -> int:
     """Berechnet erreichte/maximale Punkte in Prozent, kaufmännisch auf ganze Zahlen gerundet."""
     if not possible:
         return 0
@@ -68,7 +76,9 @@ def score_percentage(earned, possible):
     return int(value.quantize(Decimal("1"), rounding=ROUND_HALF_UP))
 
 
-def evaluate_result(test, earned, possible):
+def evaluate_result(
+    test: TestSession, earned: Decimal | int, possible: Decimal | int
+) -> dict[str, int | bool]:
     """Liefert Prozentwert und Bestehensstatus anhand der bei Erstellung gültigen Grenze."""
     percent = score_percentage(earned, possible)
     threshold = (
@@ -76,10 +86,16 @@ def evaluate_result(test, earned, possible):
         if test.pass_percentage is not None
         else test.question_pool.pass_percentage
     )
-    return {"percent": percent, "pass_percentage": threshold, "passed": percent >= threshold}
+    return {
+        "percent": percent,
+        "pass_percentage": threshold,
+        "passed": percent >= threshold,
+    }
 
 
-def grade_answer(test_question, answer):
+def grade_answer(
+    test_question: TestQuestion, answer: dict[str, Any]
+) -> tuple[Decimal | None, bool]:
     """Bewertet Auswahl und normalisierte Kurzantworten; Freitext bleibt offen."""
     kind = test_question.question_type
     value = answer.get("value", "") if isinstance(answer, dict) else ""

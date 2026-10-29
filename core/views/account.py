@@ -2,6 +2,7 @@
 
 import hashlib
 from mimetypes import guess_type
+
 from django.contrib import messages
 from django.contrib.auth import authenticate, login, logout
 from django.contrib.auth.decorators import login_required
@@ -9,10 +10,12 @@ from django.http import FileResponse, Http404
 from django.shortcuts import redirect, render
 from django.utils import timezone
 from django.views.decorators.http import require_http_methods
-from ..forms import PrivacyAcceptanceForm, ToolSettingsForm
+
 from ..audit import record_event
+from ..forms import PrivacyAcceptanceForm, ToolSettingsForm
 from ..models import AuditLog, StaffProfile, ToolSettings
 from ..permissions import has_access, has_any_pool_access
+from ..throttle import login_is_blocked, login_username_key
 from .common import require_capability
 
 
@@ -139,9 +142,23 @@ def staff_login(request):
     if request.user.is_authenticated:
         return redirect("dashboard")
     if request.method == "POST":
+        username = request.POST.get("username", "")
+        if login_is_blocked(username):
+            record_event(
+                request,
+                AuditLog.Category.SECURITY,
+                "auth.login.blocked",
+                "Anmeldung wegen zu vieler Fehlversuche vorübergehend gesperrt.",
+                metadata={"attempted_username": username[:150]},
+            )
+            messages.error(
+                request,
+                "Zu viele fehlgeschlagene Anmeldeversuche. Bitte später erneut versuchen.",
+            )
+            return render(request, "registration/login.html", status=429)
         user = authenticate(
             request,
-            username=request.POST.get("username", ""),
+            username=username,
             password=request.POST.get("password", ""),
         )
         if user is not None and user.is_active:
@@ -160,7 +177,10 @@ def staff_login(request):
             AuditLog.Category.AUTH,
             "auth.login.failed",
             "Fehlgeschlagener Anmeldeversuch.",
-            metadata={"attempted_username": request.POST.get("username", "")[:150]},
+            metadata={
+                "attempted_username": username[:150],
+                "username_key": login_username_key(username),
+            },
         )
         messages.error(request, "Anmeldung fehlgeschlagen. Bitte Zugangsdaten prüfen.")
     return render(request, "registration/login.html")

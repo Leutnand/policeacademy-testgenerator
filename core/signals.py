@@ -4,6 +4,7 @@ from django.contrib.auth.models import Permission
 from django.contrib.contenttypes.models import ContentType
 from django.db.models.signals import post_delete, post_migrate, post_save
 from django.dispatch import receiver
+
 from .models import QuestionPool
 from .permissions import (
     POOL_PERMISSION_PREFIXES,
@@ -42,6 +43,6 @@ def synchronize_dynamic_permissions(sender, using, **kwargs):
     """Stellt dynamische Poolrechte nach Migrationen wieder her."""
     if sender.name != "core":
         return
-    content_type = ContentType.objects.db_manager(using).get_for_model(QuestionPool)
+    ContentType.objects.db_manager(using).get_for_model(QuestionPool)
     for question_pool in QuestionPool.objects.using(using).all().iterator():
         ensure_question_pool_permissions(QuestionPool, question_pool, using=using)

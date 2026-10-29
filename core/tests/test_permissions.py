@@ -2,18 +2,21 @@
 
 import csv
 import io
-from importlib import import_module
 from datetime import timedelta
+from importlib import import_module
 from types import SimpleNamespace
+
 from django.apps import apps
 from django.contrib.auth import get_user_model
+from django.contrib.auth.hashers import make_password
 from django.contrib.auth.models import Group, Permission
 from django.contrib.contenttypes.models import ContentType
 from django.db import connection
 from django.test import TestCase, override_settings
-from django.utils import timezone
 from django.urls import reverse
-from django.contrib.auth.hashers import make_password
+from django.utils import timezone
+
+from ..audit import prune_audit_logs
 from ..models import (
     AuditLog,
     Question,
@@ -28,7 +31,6 @@ from ..permissions import (
     has_pool_access,
     pool_permission_codename,
 )
-from ..audit import prune_audit_logs
 
 
 class PermissionTests(TestCase):
@@ -424,7 +426,7 @@ class PermissionTests(TestCase):
             "Erlaubt Tests ausschließlich aus diesem Fragenpool zu erstellen.",
         )
         self.assertContains(
-            group_form, "Erfordert Mitarbeiterverwaltung und erlaubt kein Vergeben."
+            group_form, "Entzieht Gruppenmitgliedschaften und direkte Rechte."
         )
         self.assertNotContains(group_form, "Django-Admin")
         self.assertNotContains(group_form, "django.contrib.sessions")
@@ -611,9 +613,7 @@ class RightsAndAuditTests(TestCase):
 
     def test_permission_migration_splits_existing_user_and_group_assignments(self):
         """Die Rechte-Migration überträgt vorhandene Zuweisungen auf Einzelrechte."""
-        legacy_module = import_module(
-            "core.migrations.0023_alter_questionpool_options"
-        )
+        legacy_module = import_module("core.migrations.0023_alter_questionpool_options")
         content_type = ContentType.objects.get_for_model(QuestionPool)
         user = get_user_model().objects.create_user(username="legacy-rights-user")
         group = Group.objects.create(name="Legacy-Rechte")
@@ -1024,7 +1024,9 @@ class FieldLevelPermissionTests(TestCase):
     def test_group_name_and_priority_are_separate_permissions(self):
         manager = get_user_model().objects.create_user(username="group-manager")
         self._grant(
-            manager, "can_view_permission_groups", "can_update_permission_group_priority"
+            manager,
+            "can_view_permission_groups",
+            "can_update_permission_group_priority",
         )
         group = Group.objects.create(name="Alte Gruppe")
         self.client.force_login(manager)
@@ -1064,9 +1066,7 @@ class FieldLevelPermissionTests(TestCase):
         employee = get_user_model().objects.create_user(username="export-only")
         pool = QuestionPool.objects.create(name="Export ohne Ansicht")
         employee.user_permissions.add(
-            Permission.objects.get(
-                codename=pool_permission_codename("export", pool)
-            )
+            Permission.objects.get(codename=pool_permission_codename("export", pool))
         )
         self.client.force_login(employee)
         self.assertEqual(

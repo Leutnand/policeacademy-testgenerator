@@ -2,14 +2,16 @@
 
 from decimal import Decimal
 from tempfile import TemporaryDirectory
+
 from django.conf import settings
 from django.contrib.auth import get_user_model
+from django.contrib.auth.hashers import make_password
 from django.contrib.auth.models import Group, Permission
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase, override_settings
-from django.utils import timezone
 from django.urls import reverse
-from django.contrib.auth.hashers import make_password
+from django.utils import timezone
+
 from ..models import (
     AuditLog,
     Question,
@@ -158,7 +160,9 @@ class SubmissionAndPoolViewTests(TestCase):
         overview_url = reverse("submissions")
         self.assertNotContains(self.client.get(overview_url), "Prüflingsnamen ändern")
         self.assertEqual(
-            self.client.post(rename_url, {"examinee_name": "Cadet Updated"}).status_code,
+            self.client.post(
+                rename_url, {"examinee_name": "Cadet Updated"}
+            ).status_code,
             403,
         )
         test.refresh_from_db()
@@ -187,7 +191,9 @@ class SubmissionAndPoolViewTests(TestCase):
         )
         self.assertContains(self.client.get(detail_url), "Cadet Updated")
 
-    def test_examinee_rename_permission_is_scoped_and_does_not_grant_result_access(self):
+    def test_examinee_rename_permission_is_scoped_and_does_not_grant_result_access(
+        self,
+    ):
         """Das Recht für einen anderen Pool erlaubt weder Lesen noch Ändern."""
         user = get_user_model().objects.create_user(username="other-pool-renamer")
         test_pool = QuestionPool.objects.create(name="Geschützter Pool")
@@ -366,7 +372,6 @@ class SubmissionAndPoolViewTests(TestCase):
                 "option_count": "2",
                 "option_text_0": "",
                 "option_text_1": "",
-                "answer_key": "10-4",
             },
         )
         self.assertRedirects(
@@ -766,7 +771,9 @@ class StaffAndSettingsTests(TestCase):
             {"question_pool": str(question_pool.pk), "time_limit_minutes": "10"},
         )
         self.assertContains(response, "feste Fragenzahl")
-        self.assertFalse(TestSession.objects.filter(question_pool=question_pool).exists())
+        self.assertFalse(
+            TestSession.objects.filter(question_pool=question_pool).exists()
+        )
         response = self.client.post(
             reverse("pool_edit", args=[question_pool.pk]),
             {
@@ -829,7 +836,7 @@ class StaffAndSettingsTests(TestCase):
         """CSV-Zugriff pro Pool kann getrennt von Fragebearbeitung delegiert werden."""
         user = get_user_model().objects.create_user(username="csv-delegated")
         question_pool = QuestionPool.objects.create(name="Separates CSV-Recht")
-        question = Question.objects.create(
+        Question.objects.create(
             question_pool=question_pool,
             text="Kurzfrage",
             question_type=Question.Type.SHORT,
@@ -882,7 +889,9 @@ class StaffAndSettingsTests(TestCase):
             )
         )
         self.assertEqual(
-            self.client.get(reverse("question_export", args=[question_pool.pk])).status_code,
+            self.client.get(
+                reverse("question_export", args=[question_pool.pk])
+            ).status_code,
             200,
         )
         user.user_permissions.remove(
@@ -958,7 +967,9 @@ class StaffAndSettingsTests(TestCase):
         viewer.user_permissions.add(
             Permission.objects.get(
                 content_type__app_label="core",
-                codename=pool_permission_codename("view_submissions", test.question_pool),
+                codename=pool_permission_codename(
+                    "view_submissions", test.question_pool
+                ),
             )
         )
         self.client.force_login(viewer)

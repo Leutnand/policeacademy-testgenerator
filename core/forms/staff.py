@@ -1,172 +1,20 @@
-"""Formulare mit serverseitiger Validierung für Fragen, Benutzer und Prüfungen."""
+"""Formulare für Mitarbeiter, Rechtegruppen und Berechtigungsauswahl."""
 
 from django import forms
-from django.core.files.uploadedfile import UploadedFile
 from django.contrib.auth.models import Group, Permission, User
 from django.db.models import Max, Q, Value
 from django.db.models.functions import Coalesce
-from .models import PermissionGroupSortOrder, Question, QuestionPool, ToolSettings
-from .permissions import (
+
+from ..models import PermissionGroupSortOrder, QuestionPool
+from ..permissions import (
     ADMINISTRATOR_GROUP,
     DELEGATION_CONTROL_CODES,
     GLOBAL_PERMISSION_CODES,
     POOL_PERMISSION_PREFIXES,
-    POOL_UPDATE_FIELD_CAPABILITIES,
     USER_UPDATE_FIELD_CAPABILITIES,
     has_access,
-    has_pool_access,
     is_administrator,
 )
-
-
-class QuestionForm(forms.ModelForm):
-    """Pflegt Fragen mit strukturierten, verständlichen Auswahloptionen."""
-
-    option_count = forms.IntegerField(
-        min_value=0, max_value=20, initial=2, widget=forms.HiddenInput
-    )
-
-    class Meta:
-        """Ordnet nur die für alle Fragetypen gemeinsamen Felder zu."""
-
-        model = Question
-        fields = (
-            "question_pool",
-            "text",
-            "question_type",
-            "points",
-            "answer_key",
-            "is_pinned",
-        )
-
-    def __init__(self, *args, **kwargs):
-        """Erzeugt einzelne Text- und Korrekt-Felder passend zum Fragenbestand."""
-        # Ohne Benutzer (z. B. interne Aufrufe) erfolgt keine Feldsperre
-        self.user = kwargs.pop("user", None)
-        super().__init__(*args, **kwargs)
-        if self.user is not None and self.instance.pk:
-            # Bestehende Frage: Verankern und Musterlösung haben je ein eigenes Poolrecht
-            pool = self.instance.question_pool
-            if not has_pool_access(self.user, pool, "pin"):
-                self.fields["is_pinned"].disabled = True
-            if not has_pool_access(self.user, pool, "edit_answer_key"):
-                self.fields["answer_key"].disabled = True
-        self.fields["question_pool"].queryset = QuestionPool.objects.order_by("name")
-        self.fields["question_pool"].label = "Fragenpool / Prüfungstyp"
-        self.fields["question_pool"].empty_label = "Pool auswählen"
-        try:
-            posted_count = (
-                int(self.data.get(self.add_prefix("option_count"), 0))
-                if self.is_bound
-                else 0
-            )
-        except (TypeError, ValueError):
-            posted_count = 0
-        self.option_count = min(
-            max(posted_count, len(self.instance.options or []), 2), 20
-        )
-        self.fields["option_count"].initial = self.option_count
-        current_type = (
-            self.data.get(self.add_prefix("question_type"))
-            if self.is_bound
-            else self.instance.question_type
-        )
-        self.fields["question_type"].label = "Fragetyp"
-        self.fields["text"].label = "Frage"
-        self.fields["points"].label = "Punkte"
-        self.fields["is_pinned"].label = "Verankerte Frage"
-        self.fields["answer_key"].label = "Musterlösung / erwartete Antwort"
-        self.fields["answer_key"].help_text = (
-            "Wird bei Kurzantworten zum automatischen Vergleich verwendet."
-            if current_type == Question.Type.SHORT
-            else "Interne Notiz für die Korrektur; wird Prüflingen niemals angezeigt."
-        )
-        existing_options = self.instance.options or []
-        self.option_rows = []
-        for index in range(self.option_count):
-            option = existing_options[index] if index < len(existing_options) else {}
-            text_name = f"option_text_{index}"
-            correct_name = f"option_correct_{index}"
-            self.fields[text_name] = forms.CharField(
-                label=f"Antwort {index + 1}",
-                required=False,
-                initial=option.get("text", ""),
-                widget=forms.TextInput(
-                    attrs={
-                        "placeholder": f"Antwortmöglichkeit {index + 1}",
-                        "data-option-text": "",
-                    }
-                ),
-            )
-            self.fields[correct_name] = forms.BooleanField(
-                label="Korrekt",
-                required=False,
-                initial=option.get("is_correct", False),
-                widget=forms.CheckboxInput(attrs={"data-option-correct": ""}),
-            )
-            self.option_rows.append(
-                {"text": self[text_name], "correct": self[correct_name]}
-            )
-
-    def clean(self):
-        """Prüft Auswahlfelder und erstellt daraus das interne Optionsformat."""
-        cleaned = super().clean()
-        kind = cleaned.get("question_type")
-        options = []
-        target_pool = cleaned.get("question_pool")
-        if self.user is not None and target_pool is not None:
-            # Änderungen an Verankerung oder Musterlösung erfordern das jeweilige Poolrecht
-            if cleaned.get("is_pinned", False) != self.instance.is_pinned and not (
-                has_pool_access(self.user, target_pool, "pin")
-            ):
-                self.add_error("is_pinned", "Dir fehlt das Recht, Fragen zu verankern.")
-            if (cleaned.get("answer_key") or "") != (
-                self.instance.answer_key or ""
-            ) and not has_pool_access(self.user, target_pool, "edit_answer_key"):
-                self.add_error(
-                    "answer_key", "Dir fehlt das Recht, die Musterlösung zu ändern."
-                )
-        if kind in (Question.Type.SINGLE, Question.Type.MULTIPLE):
-            for index in range(self.option_count):
-                text = cleaned.get(f"option_text_{index}", "").strip()
-                correct = cleaned.get(f"option_correct_{index}", False)
-                if text:
-                    options.append({"text": text, "is_correct": correct})
-                elif correct:
-                    self.add_error(
-                        f"option_text_{index}",
-                        "Bitte den Antworttext ergänzen oder die Markierung entfernen.",
-                    )
-            if len(options) < 2:
-                self.add_error(
-                    "option_count",
-                    "Auswahlfragen benötigen mindestens zwei Antwortmöglichkeiten.",
-                )
-            if (
-                kind == Question.Type.SINGLE
-                and sum(option["is_correct"] for option in options) != 1
-            ):
-                self.add_error(
-                    "option_count",
-                    "Bei Single Choice muss genau eine Antwort als korrekt markiert sein.",
-                )
-            if kind == Question.Type.MULTIPLE and not any(
-                option["is_correct"] for option in options
-            ):
-                self.add_error(
-                    "option_count", "Markiere mindestens eine korrekte Antwort."
-                )
-        cleaned["options"] = options
-        return cleaned
-
-    def save(self, commit=True):
-        """Überträgt validierte JSON-Optionen vor dem Speichern ins Modell."""
-        question = super().save(commit=False)
-        question.options = self.cleaned_data.get("options", [])
-        if commit:
-            question.save()
-        return question
-
 
 # Themenbereiche der globalen Rechte in fester Anzeigereihenfolge
 GLOBAL_PERMISSION_SECTIONS = (
@@ -282,9 +130,19 @@ def add_permission_checkboxes(form, selected_ids=()):
         action: index
         for index, action in enumerate(
             (
-                "view", "create", "update", "import", "export", "pin",
-                "edit_answer_key", "delete_single", "delete_bulk",
-                "generate", "view_submissions", "grade", "rename_examinee",
+                "view",
+                "create",
+                "update",
+                "import",
+                "export",
+                "pin",
+                "edit_answer_key",
+                "delete_single",
+                "delete_bulk",
+                "generate",
+                "view_submissions",
+                "grade",
+                "rename_examinee",
             )
         )
     }
@@ -377,7 +235,8 @@ def add_permission_checkboxes(form, selected_ids=()):
         else:
             # Globale Rechte werden nach Themenbereich gruppiert und dort sortiert
             section_index, field_order = GLOBAL_SECTION_LOOKUP.get(
-                permission.codename, (len(GLOBAL_PERMISSION_SECTIONS), global_codes[permission.codename])
+                permission.codename,
+                (len(GLOBAL_PERMISSION_SECTIONS), global_codes[permission.codename]),
             )
             section_key = (0, f"{section_index:02d}")
             section_kind = "global"
@@ -504,17 +363,19 @@ class StaffUserForm(forms.ModelForm):
             "can_revoke_user_permissions",
         )
         self.can_manage_roles = (
-            self.can_grant_user_permissions or self.can_revoke_user_permissions
+            self.can_grant_user_permissions
+            or self.can_revoke_user_permissions
             or is_administrator(self.current_user)
         )
         self.can_assign_user_groups = is_administrator(self.current_user) or has_access(
             self.current_user, "can_assign_user_groups"
         )
-        self.can_unassign_user_groups = (
-            is_administrator(self.current_user)
-            or has_access(self.current_user, "can_unassign_user_groups")
+        self.can_unassign_user_groups = is_administrator(
+            self.current_user
+        ) or has_access(self.current_user, "can_unassign_user_groups")
+        self.can_manage_groups = (
+            self.can_assign_user_groups or self.can_unassign_user_groups
         )
-        self.can_manage_groups = self.can_assign_user_groups or self.can_unassign_user_groups
         self.can_grant_administrator = is_administrator(
             self.current_user
         ) or has_access(
@@ -591,7 +452,11 @@ class StaffUserForm(forms.ModelForm):
                     self.fields[field_name].disabled = True
             may_toggle_active = has_access(
                 self.current_user,
-                "can_deactivate_users" if self.instance.is_active else "can_activate_users",
+                (
+                    "can_deactivate_users"
+                    if self.instance.is_active
+                    else "can_activate_users"
+                ),
             )
             if not may_toggle_active:
                 self.fields["is_active"].disabled = True
@@ -748,7 +613,9 @@ class PermissionGroupForm(forms.ModelForm):
             # Bestehende Gruppe: Name und Priorität haben je ein eigenes Recht
             if not has_access(self.current_user, "can_rename_permission_groups"):
                 self.fields["name"].disabled = True
-            if not has_access(self.current_user, "can_update_permission_group_priority"):
+            if not has_access(
+                self.current_user, "can_update_permission_group_priority"
+            ):
                 self.fields["sort_order"].disabled = True
         selected_ids = (
             set(self.instance.permissions.values_list("pk", flat=True))
@@ -785,246 +652,3 @@ class PermissionGroupForm(forms.ModelForm):
                 defaults={"sort_order": self.cleaned_data["sort_order"]},
             )
         return group
-
-
-class ToolSettingsForm(forms.ModelForm):
-    """Validiert globale Darstellungseinstellungen und die Test-Fragenlimits."""
-
-    class Meta:
-        model = ToolSettings
-        fields = (
-            "site_name",
-            "department_name",
-            "site_icon",
-            "login_page_heading",
-            "login_page_text",
-            "privacy_policy",
-            "imprint",
-        )
-        widgets = {
-            "login_page_heading": forms.Textarea(attrs={"rows": 3}),
-            "login_page_text": forms.Textarea(attrs={"rows": 4}),
-            "privacy_policy": forms.Textarea(attrs={"rows": 12}),
-            "imprint": forms.Textarea(attrs={"rows": 8}),
-        }
-
-    def __init__(self, *args, **kwargs):
-        current_user = kwargs.pop("current_user", None)
-        super().__init__(*args, **kwargs)
-        field_capabilities = {
-            "site_name": "update_site_name",
-            "department_name": "update_department_name",
-            "site_icon": "update_site_icon",
-            "login_page_heading": "update_login_heading",
-            "login_page_text": "update_login_text",
-            "privacy_policy": "update_privacy_policy",
-            "imprint": "update_imprint",
-        }
-        self.writable_fields = {
-            field_name
-            for field_name, capability in field_capabilities.items()
-            if is_administrator(current_user) or has_access(current_user, capability)
-        }
-        for field_name in field_capabilities:
-            self.fields[field_name].disabled = field_name not in self.writable_fields
-        self.fields["privacy_policy"].widget.attrs["data-original-privacy"] = (
-            self.instance.privacy_policy if self.instance.pk else ""
-        )
-        self.fields["site_name"].widget.attrs["data-settings-site-name"] = ""
-        self.fields["department_name"].widget.attrs["data-settings-department"] = ""
-        self.fields["login_page_heading"].widget.attrs["data-settings-heading"] = ""
-        self.fields["login_page_text"].widget.attrs["data-settings-login-text"] = ""
-
-    def clean_site_icon(self):
-        icon = self.cleaned_data.get("site_icon")
-        if isinstance(icon, UploadedFile):
-            if icon.size > 1024 * 1024:
-                raise forms.ValidationError(
-                    "Das Site-Icon darf höchstens 1 MB groß sein."
-                )
-            signature = icon.read(8)
-            icon.seek(0)
-            valid_signature = (
-                icon.name.lower().endswith(".png") and signature == b"\x89PNG\r\n\x1a\n"
-            ) or (
-                icon.name.lower().endswith(".ico")
-                and signature[:4] == b"\x00\x00\x01\x00"
-            )
-            if not valid_signature:
-                raise forms.ValidationError(
-                    "Die Datei ist kein gültiges PNG- oder ICO-Site-Icon."
-                )
-        return icon
-
-
-class GenerateTestForm(forms.Form):
-    """Validiert Prüfungstyp und gewünschte Fragenanzahl."""
-
-    question_pool = forms.ModelChoiceField(
-        label="Prüfungstyp / Fragenpool",
-        queryset=QuestionPool.objects.none(),
-        empty_label="Prüfungstyp auswählen",
-    )
-    time_limit_minutes = forms.IntegerField(
-        label="Maximale Testdauer in Minuten",
-        min_value=1,
-        widget=forms.NumberInput(attrs={"min": 1}),
-        help_text="Pflichtangabe innerhalb der Grenzen des gewählten Pools.",
-    )
-
-    def clean(self):
-        """Prüft das Zeitlimit gegen die Grenzen des gewählten Fragenpools."""
-        cleaned = super().clean()
-        pool = cleaned.get("question_pool")
-        minutes = cleaned.get("time_limit_minutes")
-        if pool and minutes is not None:
-            lowest = pool.minimum_time_limit_minutes
-            highest = pool.maximum_time_limit_minutes
-            if not lowest <= minutes <= highest:
-                self.add_error(
-                    "time_limit_minutes",
-                    f"Das Zeitlimit muss für diesen Pool zwischen {lowest} und {highest} Minuten liegen.",
-                )
-        return cleaned
-
-    def __init__(self, *args, **kwargs):
-        """Bietet nur autorisierte Pools an und wählt den ersten davon vor."""
-        question_pools = kwargs.pop("question_pools", None)
-        super().__init__(*args, **kwargs)
-        self.fields["question_pool"].queryset = (
-            question_pools
-            if question_pools is not None
-            else QuestionPool.objects.none()
-        )
-        if not self.is_bound:
-            self.fields["question_pool"].initial = self.fields[
-                "question_pool"
-            ].queryset.first()
-
-
-class QuestionCsvImportForm(forms.Form):
-    """Nimmt einen CSV-Export der Fragenbank zur ergänzenden Übernahme entgegen."""
-
-    file = forms.FileField(
-        label="CSV-Datei",
-        widget=forms.ClearableFileInput(attrs={"accept": ".csv,text/csv"}),
-    )
-
-    def clean_file(self):
-        uploaded_file = self.cleaned_data["file"]
-        if not uploaded_file.name.lower().endswith(".csv"):
-            raise forms.ValidationError("Bitte eine CSV-Datei auswählen.")
-        if uploaded_file.size > 5 * 1024 * 1024:
-            raise forms.ValidationError("Die CSV-Datei darf höchstens 5 MB groß sein.")
-        return uploaded_file
-
-
-class PrivacyAcceptanceForm(forms.Form):
-    """Erfordert die ausdrückliche Bestätigung der aktuellen Datenschutzerklärung."""
-
-    accepted = forms.BooleanField(
-        label="Ich habe die Datenschutzerklärung gelesen und bestätige sie.",
-        required=True,
-    )
-
-
-class QuestionPoolForm(forms.ModelForm):
-    """Erstellt und bearbeitet benannte Prüfungstypen/Fragenpools."""
-
-    class Meta:
-        """Beschränkt Poolpflege auf Namen, Beschreibung und Testparameter."""
-
-        model = QuestionPool
-        fields = (
-            "name",
-            "description",
-            "test_question_count",
-            "pass_percentage",
-            "minimum_time_limit_minutes",
-            "maximum_time_limit_minutes",
-            "start_info_text",
-            "start_confirmations",
-        )
-
-    def __init__(self, *args, **kwargs):
-        current_user = kwargs.pop("current_user", None)
-        super().__init__(*args, **kwargs)
-        if self.instance.pk:
-            # Bestehender Pool: jedes Feld nur mit dem passenden Einzelrecht änderbar
-            for field_name, capability in POOL_UPDATE_FIELD_CAPABILITIES.items():
-                if not has_access(current_user, capability):
-                    self.fields[field_name].disabled = True
-        self.fields["start_info_text"].widget.attrs["rows"] = 6
-        self.fields["start_confirmations"].widget.attrs["rows"] = 4
-        self.fields["test_question_count"].widget.attrs["min"] = 1
-        self.fields["test_question_count"].help_text = (
-            "Jeder Test aus diesem Pool enthält genau diese Anzahl an Fragen."
-        )
-        self.fields["pass_percentage"].widget.attrs.update({"min": 0, "max": 100})
-        self.fields["pass_percentage"].help_text = (
-            "Mindestprozentwert (0 bis 100), ab dem ein Test als bestanden gilt."
-        )
-        for field_name in ("minimum_time_limit_minutes", "maximum_time_limit_minutes"):
-            self.fields[field_name].widget.attrs.update({"min": 1, "max": 1440})
-        self.fields["minimum_time_limit_minutes"].help_text = (
-            "Grenzen für das Zeitlimit, das beim Erstellen eines Tests eingegeben wird."
-        )
-
-    def clean(self):
-        cleaned = super().clean()
-        minimum = cleaned.get("minimum_time_limit_minutes")
-        maximum = cleaned.get("maximum_time_limit_minutes")
-        if maximum is not None and maximum > 1440:
-            self.add_error(
-                "maximum_time_limit_minutes",
-                "Das maximale Zeitlimit darf höchstens 1.440 Minuten betragen.",
-            )
-        if minimum is not None and maximum is not None and minimum > maximum:
-            self.add_error(
-                "maximum_time_limit_minutes",
-                "Das maximale Zeitlimit muss mindestens dem minimalen Zeitlimit entsprechen.",
-            )
-        return cleaned
-
-
-class OtpForm(forms.Form):
-    """Erfasst das sechsstellige Prüfungsgeheimnis ohne Benutzerkonto."""
-
-    otp = forms.CharField(
-        label="6-stelliges Einmalpasswort",
-        min_length=6,
-        max_length=6,
-        widget=forms.PasswordInput(
-            attrs={
-                "inputmode": "numeric",
-                "autocomplete": "one-time-code",
-                "pattern": "[0-9]{6}",
-            }
-        ),
-    )
-
-    def clean_otp(self):
-        """Erlaubt ausschließlich sechs ASCII-Ziffern als OTP."""
-        value = self.cleaned_data["otp"]
-        if not value.isascii() or not value.isdigit():
-            raise forms.ValidationError(
-                "Das Einmalpasswort muss aus sechs Ziffern bestehen."
-            )
-        return value
-
-
-class ExamineeNameForm(forms.Form):
-    """Fragt nach erfolgreicher OTP-Prüfung den Namen des Prüflings ab."""
-
-    examinee_name = forms.CharField(
-        label="Name des Prüflings",
-        max_length=120,
-        widget=forms.TextInput(attrs={"autocomplete": "name", "autofocus": True}),
-    )
-
-    def clean_examinee_name(self):
-        """Entfernt überflüssige Leerzeichen und fordert einen echten Namen."""
-        value = self.cleaned_data["examinee_name"].strip()
-        if not value:
-            raise forms.ValidationError("Bitte gib den Namen des Prüflings ein.")
-        return value

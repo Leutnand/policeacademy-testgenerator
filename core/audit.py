@@ -1,9 +1,11 @@
 """Gemeinsame Erfassung fachlicher Ereignisse im unveränderlichen Audit-Log."""
 
 from datetime import timedelta
+
 from django.conf import settings
 from django.db.models import Subquery
 from django.utils import timezone
+
 from .models import AuditLog
 
 

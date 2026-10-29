@@ -1,0 +1,27 @@
+[project]
+name = "policeacademy-testgenerator"
+version = "1.0.0"
+description = "Prüfungsverwaltung für eine Police Academy auf Django-Basis."
+requires-python = ">=3.11"
+
+[tool.black]
+line-length = 88
+target-version = ["py311"]
+extend-exclude = "/(migrations|staticfiles)/"
+
+[tool.ruff]
+line-length = 88
+target-version = "py311"
+extend-exclude = ["staticfiles"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "DJ"]
+ignore = [
+    "E501", # Zeilenlänge übernimmt black; deutsche Texte dürfen länger sein.
+    "DJ001", # Bestehende Modellfelder nutzen bewusst null=True bei Textfeldern.
+    "DJ008", # Modelle ohne __str__ sind Konfigurations-/Hilfsmodelle.
+    "DJ012", # Reihenfolge der Modellbestandteile folgt der fachlichen Gruppierung.
+]
+
+[tool.ruff.lint.per-file-ignores]
+"core/migrations/*" = ["E", "F", "I", "B", "DJ"]

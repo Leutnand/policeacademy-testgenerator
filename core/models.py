@@ -1,14 +1,15 @@
 """Datenmodelle für Fragen, Tests und deren Abgaben."""
 
 import uuid
+
 from django.conf import settings
 from django.contrib.auth.models import Group
-from django.db import models
 from django.core.validators import (
     FileExtensionValidator,
     MaxValueValidator,
     MinValueValidator,
 )
+from django.db import models
 
 
 class QuestionPool(models.Model):
@@ -59,7 +60,9 @@ class QuestionPool(models.Model):
     def start_confirmation_list(self):
         """Liefert die nicht leeren Bestätigungsaussagen."""
         return [
-            line.strip() for line in self.start_confirmations.splitlines() if line.strip()
+            line.strip()
+            for line in self.start_confirmations.splitlines()
+            if line.strip()
         ]
 
     class Meta:
@@ -82,7 +85,10 @@ class QuestionPool(models.Model):
             ("can_view_permission_groups", "Rechtegruppen anzeigen"),
             ("can_create_permission_groups", "Rechtegruppen anlegen"),
             ("can_rename_permission_groups", "Rechtegruppe umbenennen"),
-            ("can_update_permission_group_priority", "Priorität einer Rechtegruppe ändern"),
+            (
+                "can_update_permission_group_priority",
+                "Priorität einer Rechtegruppe ändern",
+            ),
             ("can_delete_permission_groups", "Rechtegruppen löschen"),
             ("can_view_tool_settings", "Tool-Einstellungen anzeigen"),
             ("can_update_site_name", "Seitentitel ändern"),
@@ -108,10 +114,19 @@ class QuestionPool(models.Model):
             ("can_update_pool_description", "Beschreibung eines Fragenpools ändern"),
             ("can_update_pool_question_count", "Fragenanzahl eines Pools ändern"),
             ("can_update_pool_pass_percentage", "Bestehensgrenze eines Pools ändern"),
-            ("can_update_pool_min_time_limit", "Minimales Zeitlimit eines Pools ändern"),
-            ("can_update_pool_max_time_limit", "Maximales Zeitlimit eines Pools ändern"),
+            (
+                "can_update_pool_min_time_limit",
+                "Minimales Zeitlimit eines Pools ändern",
+            ),
+            (
+                "can_update_pool_max_time_limit",
+                "Maximales Zeitlimit eines Pools ändern",
+            ),
             ("can_update_pool_start_info_text", "Starttext eines Pools ändern"),
-            ("can_update_pool_start_confirmations", "Startbestätigungen eines Pools ändern"),
+            (
+                "can_update_pool_start_confirmations",
+                "Startbestätigungen eines Pools ändern",
+            ),
             ("can_delete_question_pools", "Fragenpools löschen"),
         ]
 
@@ -263,6 +278,9 @@ class TestSession(models.Model):
     )
     pass_percentage = models.PositiveSmallIntegerField(
         "Bestehgrenze in Prozent (bei Erstellung)", null=True, blank=True
+    )
+    otp_failed_attempts = models.PositiveSmallIntegerField(
+        "Fehlversuche bei der OTP-Eingabe", default=0
     )
     otp_verified_at = models.DateTimeField(
         "Einmalpasswort bestätigt am", null=True, blank=True

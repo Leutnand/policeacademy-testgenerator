@@ -1,19 +1,19 @@
 """Verwaltung von Mitarbeiterkonten."""
 
 from django.contrib import messages
-from django.contrib.auth.models import User
+from django.contrib.auth.models import Group, User
 from django.db import transaction
 from django.db.models import Value
 from django.db.models.functions import Coalesce
-from django.contrib.auth.models import Group
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.debug import sensitive_post_parameters
 from django.views.decorators.http import require_http_methods, require_POST
-from ..forms import StaffUserForm
+
 from ..audit import record_event
+from ..forms import StaffUserForm
 from ..models import AuditLog
 from ..permissions import USER_UPDATE_CAPABILITIES, has_access, is_administrator
-from .common import require_capability, _effective_academy_permissions
+from .common import _effective_academy_permissions, require_capability
 
 
 @require_capability("view_users")
@@ -30,19 +30,13 @@ def users_dashboard(request):
         )
         .order_by("display_order", "name")
     )
-    group_priorities = {
-        group.pk: group.display_order
-        for group in groups
-    }
+    group_priorities = {group.pk: group.display_order for group in groups}
     rows = sorted(
         users,
         key=lambda user: (
             0 if user.is_superuser else 1,
             min(
-                (
-                    group_priorities.get(group.pk, 0)
-                    for group in user.groups.all()
-                ),
+                (group_priorities.get(group.pk, 0) for group in user.groups.all()),
                 default=10**9,
             ),
             (user.get_full_name() or user.username).casefold(),

@@ -3,17 +3,19 @@
 import csv
 import io
 import json
+
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
+from django.core.paginator import Paginator
 from django.db import transaction
 from django.db.models import Count
-from django.core.paginator import Paginator
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.views.decorators.http import require_http_methods, require_POST
-from ..forms import QuestionCsvImportForm, QuestionForm, QuestionPoolForm
+
 from ..audit import record_event
+from ..forms import QuestionCsvImportForm, QuestionForm, QuestionPoolForm
 from ..models import AuditLog, Question, QuestionPool
 from ..permissions import (
     POOL_UPDATE_CAPABILITIES,
@@ -21,7 +23,7 @@ from ..permissions import (
     has_access,
     has_pool_access,
 )
-from .common import require_administrator, require_capability
+from .common import require_capability
 
 
 @login_required
@@ -480,12 +482,18 @@ def question_create(request):
     editable_pools = accessible_pools(request.user, "create")
     if not editable_pools.exists():
         return render(
-            request, "core/403.html", {"capability": "can_create_question_pool"}, status=403
+            request,
+            "core/403.html",
+            {"capability": "can_create_question_pool"},
+            status=403,
         )
     requested_pool_id = request.GET.get("pool") or request.POST.get("question_pool")
     if requested_pool_id and not editable_pools.filter(pk=requested_pool_id).exists():
         return render(
-            request, "core/403.html", {"capability": "can_create_question_pool"}, status=403
+            request,
+            "core/403.html",
+            {"capability": "can_create_question_pool"},
+            status=403,
         )
     selected_pool_id = (
         request.GET.get("pool") or editable_pools.values_list("pk", flat=True).first()
@@ -531,14 +539,20 @@ def question_edit(request, pk):
     # Eigenständiges Einzelrecht: kein zusätzliches Ansichtsrecht nötig
     if not has_pool_access(request.user, question.question_pool, "update"):
         return render(
-            request, "core/403.html", {"capability": "can_update_question_pool"}, status=403
+            request,
+            "core/403.html",
+            {"capability": "can_update_question_pool"},
+            status=403,
         )
     editable_pools = accessible_pools(request.user, "update")
     if request.method == "POST":
         target_pool_id = request.POST.get("question_pool")
         if target_pool_id and not editable_pools.filter(pk=target_pool_id).exists():
             return render(
-                request,                 "core/403.html", {"capability": "can_update_question_pool"}, status=403
+                request,
+                "core/403.html",
+                {"capability": "can_update_question_pool"},
+                status=403,
             )
     form = QuestionForm(request.POST or None, instance=question, user=request.user)
     form.fields["question_pool"].queryset = editable_pools

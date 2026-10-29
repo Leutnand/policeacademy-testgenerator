@@ -1,17 +1,19 @@
 """Systemlog mit Filter, Export und Bereinigung."""
 
 import csv
+
 from django.contrib import messages
+from django.core.paginator import Paginator
 from django.db import transaction
 from django.db.models import Q
-from django.core.paginator import Paginator
 from django.http import HttpResponse, HttpResponseBadRequest
 from django.shortcuts import redirect, render
 from django.utils import timezone
 from django.views.decorators.http import require_POST
+
 from ..audit import record_event
 from ..models import AuditLog
-from .common import require_capability, _parse_filter_date
+from .common import _parse_filter_date, require_capability
 
 
 @require_capability("can_view_audit_logs")

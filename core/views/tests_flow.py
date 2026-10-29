@@ -3,19 +3,21 @@
 import math
 from datetime import timedelta
 from decimal import Decimal, InvalidOperation
+
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.hashers import check_password
-from django.db import transaction
-from django.db.models import Count, Q, Sum, CharField
-from django.db.models.functions import Cast
 from django.core.paginator import Paginator
+from django.db import transaction
+from django.db.models import CharField, Count, Q, Sum
+from django.db.models.functions import Cast
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.http import require_http_methods, require_POST
-from ..forms import ExamineeNameForm, GenerateTestForm, OtpForm
+
 from ..audit import record_event
+from ..forms import ExamineeNameForm, GenerateTestForm, OtpForm
 from ..models import (
     AuditLog,
     Question,
@@ -35,7 +37,8 @@ from ..services import (
     generate_test,
     grade_answer,
 )
-from .common import require_capability, _query_without_page, _parse_filter_date
+from ..throttle import otp_is_locked, reserve_otp_attempt, reset_otp_attempts
+from .common import _parse_filter_date, _query_without_page, require_capability
 
 
 @login_required
@@ -256,8 +259,40 @@ def take_test(request, test_id):
         return render(request, "core/test_unavailable.html", status=410)
     if request.session.get(session_key) != str(test.pk):
         otp_form = OtpForm(request.POST or None)
+        if otp_is_locked(test):
+            if request.method == "POST":
+                record_event(
+                    request,
+                    AuditLog.Category.SECURITY,
+                    "test.otp.locked",
+                    "Testzugang wegen zu vieler OTP-Fehlversuche gesperrt.",
+                    "test",
+                    test.pk,
+                )
+            return render(
+                request,
+                "core/otp.html",
+                {"form": otp_form, "test": test, "locked": True},
+                status=429,
+            )
         if request.method == "POST" and otp_form.is_valid():
+            if not reserve_otp_attempt(test):
+                record_event(
+                    request,
+                    AuditLog.Category.SECURITY,
+                    "test.otp.locked",
+                    "Testzugang wegen zu vieler OTP-Fehlversuche gesperrt.",
+                    "test",
+                    test.pk,
+                )
+                return render(
+                    request,
+                    "core/otp.html",
+                    {"form": otp_form, "test": test, "locked": True},
+                    status=429,
+                )
             if check_password(otp_form.cleaned_data["otp"], test.otp_hash):
+                reset_otp_attempts(test)
                 request.session[session_key] = str(test.pk)
                 TestSession.objects.filter(
                     pk=test.pk,
@@ -350,7 +385,7 @@ def take_test(request, test_id):
                 {
                     "test": test,
                     "questions": _public_questions(test),
-            "examinee_name": request.session.get(name_session_key, ""),
+                    "examinee_name": request.session.get(name_session_key, ""),
                     "remaining_seconds": (
                         max(1, math.ceil((deadline - timezone.now()).total_seconds()))
                         if deadline
@@ -389,7 +424,9 @@ def take_test(request, test_id):
 @login_required
 def submissions(request):
     """Zeigt freigegebene Testabgaben, optional gefiltert nach Prüfungstyp."""
-    submission_pools = accessible_pools(request.user, "view_submissions").order_by("name")
+    submission_pools = accessible_pools(request.user, "view_submissions").order_by(
+        "name"
+    )
     if not is_administrator(request.user) and not submission_pools.exists():
         return render(
             request,

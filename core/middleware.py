@@ -1,13 +1,18 @@
-"""Protokolliert jeden nicht-statischen HTTP-Aufruf ohne POST-Nutzdaten."""
+"""Protokolliert nicht-statische HTTP-Aufrufe ohne POST-Nutzdaten.
+
+Mit AUDIT_LOG_REQUESTS=changes werden erfolgreiche Lesezugriffe ausgelassen."""
 
 import hashlib
 import logging
 from threading import Lock
 from time import monotonic
+
+from django.conf import settings
 from django.db import DatabaseError
 from django.shortcuts import redirect
-from django.urls import resolve, Resolver404
+from django.urls import Resolver404, resolve
 from django.utils import timezone
+
 from .audit import client_ip, prune_audit_logs
 from .models import AuditLog, StaffProfile, ToolSettings
 
@@ -91,6 +96,12 @@ class AuditRequestMiddleware:
             return self.get_response(request)
         self._run_daily_retention_cleanup()
         response = self.get_response(request)
+        if (
+            settings.AUDIT_LOG_REQUESTS == "changes"
+            and request.method in {"GET", "HEAD", "OPTIONS"}
+            and response.status_code < 400
+        ):
+            return response
         try:
             match = resolve(path)
             route_name = match.view_name or ""

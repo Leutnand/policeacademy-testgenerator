@@ -1,11 +1,13 @@
 """Tests zur Testgenerierung."""
 
 from decimal import Decimal
+
 from django.contrib.auth import get_user_model
 from django.contrib.auth.hashers import check_password
 from django.contrib.auth.models import Permission
 from django.test import TestCase
 from django.urls import reverse
+
 from ..models import Question, QuestionPool, TestSession
 from ..permissions import has_pool_access, pool_permission_codename
 from ..services import TestGenerationError, generate_test, score_percentage
@@ -108,7 +110,9 @@ class TestGenerationTests(TestCase):
                 reverse("generate_test"),
                 {"question_pool": self.question_pool.pk, "time_limit_minutes": invalid},
             )
-            self.assertFalse(TestSession.objects.filter(created_by=administrator).exists())
+            self.assertFalse(
+                TestSession.objects.filter(created_by=administrator).exists()
+            )
             self.assertContains(response, "field-error")
         response = self.client.post(
             reverse("generate_test"),

@@ -1,11 +1,13 @@
 """Tests zum Prüflingsablauf."""
 
 from datetime import timedelta
+
 from django.contrib.auth import get_user_model
-from django.test import TestCase
-from django.utils import timezone
-from django.urls import reverse
 from django.contrib.auth.hashers import make_password
+from django.test import TestCase
+from django.urls import reverse
+from django.utils import timezone
+
 from ..models import (
     AuditLog,
     Question,
@@ -26,7 +28,6 @@ class ApplicantFlowTests(TestCase):
         )
         self.question_pool = QuestionPool.objects.create(name="Academy-Grundtest")
         # Der Test wird direkt erzeugt, damit die Testfragen den Lösungsschlüssel abdecken.
-        from django.contrib.auth.hashers import make_password
 
         self.test = TestSession.objects.create(
             created_by=self.user,

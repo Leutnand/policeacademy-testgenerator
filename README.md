@@ -98,7 +98,7 @@ Beim Erzeugen eines Tests wird die gewünschte Gesamtzahl `N` gegen den verfügb
 
 Jeder Test erhält eine UUID und ein sechs Ziffern langes OTP aus dem kryptografischen Zufallszahlengenerator. Die Klartext-OTP wird ausschließlich bei erfolgreicher Erzeugung angezeigt und niemals in der Datenbank gespeichert: persistiert wird Djangos adaptiver Passwort-Hash. Der Prüfling öffnet den Direktlink, gibt das OTP ein, trägt danach seinen Namen ein und erhält anschließend nur Fragetext, Fragetyp und Antwortoptionen. Musterlösungen und Punkte werden nicht in den Prüflingskontext serialisiert. Der Name wird erst beim erfolgreichen Absenden mit dem Testlauf gespeichert.
 
-Beim Absenden prüft der Server Antwortoptionen erneut. In einer Datenbanktransaktion wird der Teststatus per bedingtem Update von `ISSUED` nach `COMPLETED` gewechselt. Nur wenn genau ein Datensatz geändert wurde, werden Abgaben gespeichert. Das bedingte Update verhindert eine zweite Einlösung auch bei gleichzeitig eintreffenden Requests. SQLite ist für lokale Einzelinstanzen geeignet; für parallele Produktivlast sollte eine Datenbank mit stärkerer Konkurrenzkontrolle wie PostgreSQL eingesetzt werden. Das OTP hat im aktuellen lokalen MVP keine zeitbasierte Ablaufzeit oder verteilte Fehlversuchsdrosselung; Test-URLs sollten daher vertraulich geteilt und produktiv durch Rate-Limiting/Monitoring ergänzt werden.
+Beim Absenden prüft der Server Antwortoptionen erneut. In einer Datenbanktransaktion wird der Teststatus per bedingtem Update von `ISSUED` nach `COMPLETED` gewechselt. Nur wenn genau ein Datensatz geändert wurde, werden Abgaben gespeichert. Das bedingte Update verhindert eine zweite Einlösung auch bei gleichzeitig eintreffenden Requests. SQLite ist für lokale Einzelinstanzen geeignet; für parallele Produktivlast sollte eine Datenbank mit stärkerer Konkurrenzkontrolle wie PostgreSQL eingesetzt werden. Das OTP hat im aktuellen lokalen MVP keine zeitbasierte Ablaufzeit. Fehlversuche werden pro Test gezählt (`OTP_MAX_FAILED_ATTEMPTS`, Standard 5, atomar vor der Prüfung reserviert): danach ist der Zugang dauerhaft gesperrt (HTTP 429) und es muss ein neuer Test erstellt werden. Die Mitarbeiter-Anmeldung wird je Benutzername nach `LOGIN_MAX_FAILURES` (Standard 5) Fehlversuchen innerhalb von `LOGIN_FAILURE_WINDOW_MINUTES` (Standard 15) vorübergehend gesperrt; die Sperre hängt bewusst nicht an der IP, da hinter einem Reverse-Proxy alle Clients dieselbe Adresse haben. Beides wird im Systemprotokoll vermerkt (`test.otp.locked`, `auth.login.blocked`). Test-URLs sollten dennoch vertraulich geteilt werden.
 
 Bei der Testerstellung kann optional ein Zeitlimit von 1 bis 1.440 Minuten gewählt werden. Die Zeitmessung beginnt, sobald der Prüfling die Fragenseite öffnet. Ein Countdown gibt den Test im Browser automatisch ab; zusätzlich setzt der Server ein abgelaufenes Zeitlimit durch und wertet nicht rechtzeitig eingegangene Antworten als unbeantwortet. Für die Übertragung der automatischen Abgabe räumt der Server höchstens drei Sekunden Netzwerkpuffer ein. Die Bearbeitungszeit (bei Zeitlimit höchstens bis zum Ablauf) erscheint in der Ergebnisübersicht und Detailauswertung.
 
@@ -109,15 +109,22 @@ Antworten auf einer Testseite werden im `sessionStorage` des Browser-Tabs zwisch
 ## Lokale Entwicklung
 
 ```powershell
+python -m pip install -r requirements-dev.txt
 python manage.py check
 python manage.py test
+ruff check .
+black --check .
 ```
+
+`requirements.txt` enthält exakt gepinnte Laufzeitabhängigkeiten (aus `requirements.in` aufgelöst), `requirements-dev.txt` zusätzlich Linter und Formatter; die Konfiguration steht in `pyproject.toml`. Die GitHub-Actions-Pipeline (`.github/workflows/ci.yml`) führt Lint, Format-Check, `check --deploy`, Migrationsprüfung, Tests und einen Docker-Build aus. Eine Vorlage für Umgebungsvariablen liegt in `.env.example`.
+
+Die Formulare liegen als Paket in `core/forms/` (`questions`, `staff`, `tool_settings`, `exam`).
 
 Die Oberfläche verwendet lokales CSS; Google Fonts werden optional extern geladen und fallen ohne Internet auf System-Schriften zurück. Die Standardwerte der Django-Konfiguration sind für lokale Entwicklung gedacht; für Deployment werden Produktionswerte über Umgebungsvariablen gesetzt.
 
 ## Docker-Deployment mit Portainer
 
-Das Image verwendet Python 3.11, Gunicorn und WhiteNoise. SQLite liegt im persistenten Volume `sqlite_data`; die mit `collectstatic` erzeugten Dateien liegen im Volume `static_data`. Beim Start führt der Container zuerst Datenbankmigrationen und `collectstatic` aus und startet danach Gunicorn als unprivilegierter Benutzer.
+Das Image verwendet Python 3.11, Gunicorn und WhiteNoise. SQLite liegt im persistenten Volume `sqlite_data` (WAL-Modus, 20 s Lock-Timeout); die mit `collectstatic` erzeugten Dateien liegen im Volume `static_data`. Beim Start führt `docker-entrypoint.sh` Datenbankmigrationen und `collectstatic` aus und startet danach Gunicorn als unprivilegierter Benutzer. Bei mehreren Replicas sollten `RUN_MIGRATIONS` und `RUN_COLLECTSTATIC` nur in einer Instanz aktiv sein. Mit `DATABASE_URL` (z. B. `postgres://user:pass@host:5432/db`) wird statt SQLite PostgreSQL verwendet. Mit `AUDIT_LOG_REQUESTS=changes` werden erfolgreiche Lesezugriffe nicht mehr protokolliert, was die Schreiblast senkt.
 
 1. Lege in Portainer unter **Stacks** einen neuen Stack aus diesem Git-Repository an und wähle `docker-compose.yml` als Compose-Datei.
 1. Hinterlege unter den Stack-Umgebungsvariablen `DJANGO_SECRET_KEY` (einen langen zufälligen Wert), `DJANGO_ALLOWED_HOSTS` (deinen Hostnamen, ohne Schema) und `CSRF_TRUSTED_ORIGINS` (zum Beispiel `https://academy.example.org`). Setze außerdem `PORT` bei Bedarf auf den gewünschten Host-Port.

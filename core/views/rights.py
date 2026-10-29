@@ -6,8 +6,9 @@ from django.db.models import Count, Value
 from django.db.models.functions import Coalesce
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_http_methods, require_POST
-from ..forms import PermissionGroupForm, StaffUserForm
+
 from ..audit import record_event
+from ..forms import PermissionGroupForm, StaffUserForm
 from ..models import AuditLog
 from ..permissions import (
     ADMINISTRATOR_GROUP,
@@ -17,9 +18,8 @@ from ..permissions import (
     is_administrator,
 )
 from .common import (
-    require_capability,
-    require_administrator,
     _effective_academy_permissions,
+    require_capability,
 )
 
 
@@ -42,7 +42,9 @@ def permissions_dashboard(request):
         {
             "groups": groups,
             "can_create_groups": has_access(request.user, "create_groups"),
-            "can_update_groups": has_any_access(request.user, GROUP_UPDATE_CAPABILITIES),
+            "can_update_groups": has_any_access(
+                request.user, GROUP_UPDATE_CAPABILITIES
+            ),
             "can_delete_groups": has_access(request.user, "delete_groups"),
         },
     )
