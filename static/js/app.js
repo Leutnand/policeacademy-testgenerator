@@ -1,5 +1,28 @@
 /* Theme-Wechsel und Kopieraktionen der Oberfläche. */
 document.addEventListener('DOMContentLoaded', () => {
+  /* Laufende Tests: Restzeiten herunterzählen und die Liste regelmäßig neu laden. */
+  const countdowns = document.querySelectorAll('[data-countdown-ms]');
+  if (countdowns.length) {
+    const startedAt = performance.now();
+    const tick = () => {
+      const elapsed = performance.now() - startedAt;
+      countdowns.forEach((element) => {
+        const remaining = Math.max(0, Number(element.dataset.countdownMs) - elapsed);
+        const seconds = Math.ceil(remaining / 1000);
+        element.textContent = remaining > 0
+          ? `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`
+          : 'Zeit abgelaufen';
+        element.classList.toggle('is-expired', remaining <= 0);
+        element.classList.toggle('is-low', remaining > 0 && remaining <= 5 * 60 * 1000);
+      });
+    };
+    tick();
+    window.setInterval(tick, 1000);
+  }
+  const refreshSeconds = Number(document.body.dataset.autoRefresh || 0);
+  if (refreshSeconds > 0) {
+    window.setTimeout(() => window.location.reload(), refreshSeconds * 1000);
+  }
   /* Rechte-Editor: Zähler je Bereich, Alle/Keine, Auf-/Zuklappen. */
   const sections = document.querySelectorAll('[data-permission-section]');
   const updateCount = (section) => {

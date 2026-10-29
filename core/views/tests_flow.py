@@ -9,7 +9,7 @@ from django.contrib.auth.decorators import login_required
 from django.contrib.auth.hashers import check_password
 from django.core.paginator import Paginator
 from django.db import transaction
-from django.db.models import CharField, Count, Q, Sum
+from django.db.models import CharField, Count, F, Q, Sum
 from django.db.models.functions import Cast
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
@@ -39,6 +39,8 @@ from ..services import (
 )
 from ..throttle import otp_is_locked, reserve_otp_attempt, reset_otp_attempts
 from .common import _parse_filter_date, _query_without_page, require_capability
+
+RUNNING_TEST_WINDOW_HOURS = 24
 
 
 @login_required
@@ -321,7 +323,12 @@ def take_test(request, test_id):
     if not request.session.get(name_session_key):
         name_form = ExamineeNameForm(request.POST or None)
         if request.method == "POST" and name_form.is_valid():
-            request.session[name_session_key] = name_form.cleaned_data["examinee_name"]
+            examinee_name = name_form.cleaned_data["examinee_name"]
+            request.session[name_session_key] = examinee_name
+            # Sofort speichern, damit Prüfer den Namen schon während des Tests sehen
+            TestSession.objects.filter(
+                pk=test.pk, status=TestSession.Status.ISSUED
+            ).update(examinee_name=examinee_name)
             return redirect("take_test", test_id=test.pk)
         return render(
             request, "core/examinee_name.html", {"form": name_form, "test": test}
@@ -417,6 +424,73 @@ def take_test(request, test_id):
                 if deadline
                 else None
             ),
+        },
+    )
+
+
+def _running_test_row(test, now):
+    """Fasst Phase und Restzeit eines laufenden Tests für die Prüferübersicht zusammen."""
+    remaining_seconds = None
+    if test.started_at is not None and test.time_limit_minutes is not None:
+        deadline = test.started_at + timedelta(minutes=test.time_limit_minutes)
+        remaining_seconds = max(0, math.ceil((deadline - now).total_seconds()))
+    if test.started_at is not None:
+        phase = "running"
+    elif test.examinee_name:
+        phase = "ready"
+    else:
+        phase = "verified"
+    minutes, seconds = divmod(remaining_seconds or 0, 60)
+    return {
+        "test": test,
+        "phase": phase,
+        "expired": remaining_seconds == 0,
+        "remaining_seconds": remaining_seconds,
+        "remaining_milliseconds": (
+            remaining_seconds * 1000 if remaining_seconds is not None else None
+        ),
+        "remaining_display": f"{minutes}:{seconds:02d}",
+        "progress_percent": (
+            round(remaining_seconds / (test.time_limit_minutes * 60) * 100)
+            if remaining_seconds is not None
+            else None
+        ),
+    }
+
+
+@login_required
+def running_tests(request):
+    """Zeigt aktuell laufende Tests der freigegebenen Pools mit Name und Restzeit."""
+    pools = accessible_pools(request.user, "generate").order_by("name")
+    if not is_administrator(request.user) and not pools.exists():
+        return render(
+            request,
+            "core/403.html",
+            {"capability": "can_generate_test_from_pool"},
+            status=403,
+        )
+    now = timezone.now()
+    # Ältere, nie abgegebene Zugänge gelten als verlassen und werden nicht mehr gelistet
+    cutoff = now - timedelta(hours=RUNNING_TEST_WINDOW_HOURS)
+    active_tests = (
+        TestSession.objects.filter(
+            status=TestSession.Status.ISSUED, question_pool__in=pools
+        )
+        .filter(
+            Q(started_at__gte=cutoff)
+            | Q(started_at__isnull=True, otp_verified_at__gte=cutoff)
+        )
+        .select_related("question_pool")
+        .order_by(F("started_at").asc(nulls_last=True), "otp_verified_at")
+    )
+    rows = [_running_test_row(test, now) for test in active_tests]
+    return render(
+        request,
+        "core/running_tests.html",
+        {
+            "rows": rows,
+            "running_count": sum(row["phase"] == "running" for row in rows),
+            "window_hours": RUNNING_TEST_WINDOW_HOURS,
         },
     )
 

@@ -22,7 +22,7 @@
     <script>try{document.documentElement.dataset.theme=localStorage.getItem('police-academy-theme')||'light'}catch(e){}</script>
     {% block head %}{% endblock %}
   </head>
-  <body>
+  <body{% block body_attrs %}{% endblock %}>
     <header class="topbar">
       <a class="brand"
          href="{% url 'dashboard' %}"
@@ -31,7 +31,7 @@
         {% if user.is_authenticated %}
           {% if has_viewable_question_pools %}<a class="{% if request.resolver_match.url_name == 'admin_dashboard' or request.resolver_match.url_name == 'question_create' or request.resolver_match.url_name == 'question_edit' or request.resolver_match.url_name == 'question_import' or request.resolver_match.url_name == 'question_export' %}active{% endif %}"
                                                  href="{% url 'admin_dashboard' %}"><span class="nav-index">01</span>Fragenbank</a>{% endif %}
-          {% if has_generatable_question_pools %}<a class="{% if request.resolver_match.url_name == 'generate_test' %}active{% endif %}"
+          {% if has_generatable_question_pools %}<a class="{% if request.resolver_match.url_name == 'generate_test' or request.resolver_match.url_name == 'running_tests' %}active{% endif %}"
                                                     href="{% url 'generate_test' %}"><span class="nav-index">02</span>Testläufe</a>{% endif %}
           {% if has_viewable_submission_pools %}<a class="{% if request.resolver_match.url_name == 'submissions' or request.resolver_match.url_name == 'submission_detail' %}active{% endif %}"
                                                    href="{% url 'submissions' %}"><span class="nav-index">03</span>Auswertung</a>{% endif %}

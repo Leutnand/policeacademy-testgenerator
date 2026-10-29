@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+{% block title %}Laufende Tests{% endblock %}
+{% block body_attrs %} data-auto-refresh="30"{% endblock %}
+{% block content %}
+  {% include "core/_test_tabs.html" %}
+  <div class="page-heading">
+    <div>
+      <div class="section-kicker">POLICE ACADEMY / PRÜFUNGSAUFSICHT</div>
+      <h1>Laufende Tests</h1>
+      <p class="muted">
+        {{ running_count }} Test{{ running_count|pluralize }} in Bearbeitung · Die Ansicht aktualisiert sich alle 30 Sekunden.
+        Gelistet werden Tests mit bestätigtem Zugang aus den letzten {{ window_hours }} Stunden.
+      </p>
+    </div>
+  </div>
+  <div class="table-wrap">
+    <table class="running-tests-table">
+      <thead>
+        <tr>
+          <th>Prüfling</th>
+          <th>Prüfungstyp</th>
+          <th>Test-ID</th>
+          <th>Status</th>
+          <th>Gestartet</th>
+          <th>Verbleibende Zeit</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in rows %}
+          <tr>
+            <td class="question-title">
+              {% if row.test.examinee_name %}
+                {{ row.test.examinee_name }}
+              {% else %}
+                <span class="muted">Name noch nicht eingetragen</span>
+              {% endif %}
+            </td>
+            <td class="nowrap-cell">
+              <span class="type-label">{{ row.test.question_pool.name }}</span>
+            </td>
+            <td>
+              <code>{{ row.test.pk|stringformat:"s"|slice:":8" }}…</code>
+            </td>
+            <td class="nowrap-cell">
+              {% if row.phase == "running" %}
+                <span class="status-pill active">Läuft</span>
+              {% elif row.phase == "ready" %}
+                <span class="status-pill pending">Startbereit</span>
+              {% else %}
+                <span class="status-pill pending">Zugang bestätigt</span>
+              {% endif %}
+            </td>
+            <td class="nowrap-cell">
+              {% if row.test.started_at %}
+                {{ row.test.started_at|date:"H:i:s" }} Uhr
+              {% else %}
+                <span class="muted">–</span>
+              {% endif %}
+            </td>
+            <td class="nowrap-cell">
+              {% if row.remaining_seconds is not None %}
+                <strong class="running-countdown{% if row.expired %} is-expired{% endif %}"
+                        data-countdown-ms="{{ row.remaining_milliseconds }}">{% if row.expired %}Zeit abgelaufen{% else %}{{ row.remaining_display }}{% endif %}</strong>
+                <small class="muted">/ {{ row.test.time_limit_minutes }} min</small>
+              {% elif row.test.time_limit_minutes %}
+                <span class="muted">{{ row.test.time_limit_minutes }} min (startet mit der ersten Frage)</span>
+              {% else %}
+                <span class="muted">Kein Zeitlimit</span>
+              {% endif %}
+            </td>
+          </tr>
+        {% empty %}
+          <tr>
+            <td colspan="6" class="empty-state">Aktuell läuft kein Test.</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+{% endblock %}

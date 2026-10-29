@@ -60,7 +60,7 @@ body {
   min-height: 84px;
   height: auto;
   gap: clamp(20px, 2.6vw, 40px);
-  padding: 10px max(30px, calc((100vw - 1320px) / 2));
+  padding: 10px max(30px, 5vw);
   background: var(--lapd-navy);
   border: 0;
   border-bottom: 3px solid var(--lapd-gold);
@@ -282,7 +282,7 @@ body {
 }
 
 .page-shell {
-  max-width: 1320px;
+  max-width: 90%;
   min-height: calc(100vh - 166px);
   padding: 52px 34px 76px;
 }

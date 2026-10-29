@@ -78,6 +78,7 @@ urlpatterns = [
         name="permission_user_edit",
     ),
     path("generate-test/", views.generate_test_view, name="generate_test"),
+    path("running-tests/", views.running_tests, name="running_tests"),
     path("test/<uuid:test_id>/", views.take_test, name="take_test"),
     path("submissions/", views.submissions, name="submissions"),
     path(

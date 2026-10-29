@@ -1,0 +1,6 @@
+<nav class="personnel-tabs" aria-label="Testläufe">
+  <a class="{% if request.resolver_match.url_name == 'generate_test' %}active{% endif %}"
+     href="{% url 'generate_test' %}">Test erstellen</a>
+  <a class="{% if request.resolver_match.url_name == 'running_tests' %}active{% endif %}"
+     href="{% url 'running_tests' %}">Laufende Tests</a>
+</nav>

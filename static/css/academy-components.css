@@ -71,7 +71,7 @@
   min-height: 84px;
   align-items: center;
   gap: 24px;
-  padding: 14px max(30px, calc((100vw - 1320px) / 2));
+  padding: 14px max(30px, 5vw);
   border-top: 2px solid var(--lapd-gold);
   background: var(--lapd-navy);
   color: #f0f2f2;
@@ -528,6 +528,18 @@
 .personnel-tabs a.active {
   border-bottom-color: var(--lapd-gold);
   color: var(--text);
+}
+
+.running-countdown {
+  font-variant-numeric: tabular-nums;
+}
+
+.running-countdown.is-low {
+  color: var(--lapd-gold);
+}
+
+.running-countdown.is-expired {
+  color: #b3261e;
 }
 
 .permissions-section-heading {
