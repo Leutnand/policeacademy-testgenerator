@@ -627,6 +627,7 @@ td.row-actions>form {
 }
 
 .form-sheet {
+  margin-inline: auto;
   border-radius: 5px;
   box-shadow: 0 8px 24px rgba(17, 39, 63, .06);
 }
