@@ -2,11 +2,10 @@
 # Neu erzeugen: in einem leeren venv `pip install -r requirements.in` und `pip freeze` ausführen.
 asgiref==3.13.0
 dj-database-url==3.1.2
-Django==5.2.18
-gunicorn==23.0.0
-packaging==26.3
-psycopg==3.3.6
+django==5.2.18
+gunicorn==26.2.0
+psycopg[binary]==3.3.6
 psycopg-binary==3.3.6
 sqlparse==0.6.0
-tzdata==2026.6
+typing-extensions==4.16.0
 whitenoise==6.12.0
