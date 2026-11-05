@@ -1,4 +1,4 @@
-Django>=5.1,<6.0
+Django>=5.2.19,<6.0
 gunicorn>=23.0,<24.0
 whitenoise>=6.8,<7.0
 dj-database-url>=2.3,<4.0
