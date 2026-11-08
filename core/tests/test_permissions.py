@@ -1104,3 +1104,87 @@ class FieldLevelPermissionTests(TestCase):
         self.assertEqual(question.text, "Neu?")
         self.assertEqual(question.answer_key, "alt")
         self.assertFalse(question.is_pinned)
+
+
+class GroupHierarchySecurityTests(TestCase):
+    """Prüft Schutz vor Selbstprivilegien-Eskalation und Hierarchie-Umgehung."""
+
+    def test_user_cannot_edit_own_group_to_escalate_privileges(self):
+        """Nutzer darf seine eigene Gruppe nicht bearbeiten."""
+        moderator = get_user_model().objects.create_user(username="moderator")
+        mod_group = Group.objects.create(name="Moderator")
+        moderator.groups.add(mod_group)
+        
+        # Geben Sie dem Moderator die Berechtigung zum Ändern von Gruppennamen
+        mod_group.permissions.add(
+            *Permission.objects.filter(
+                content_type__app_label="core",
+                codename__in=(
+                    "can_rename_permission_groups",
+                    "can_update_permission_group_priority",
+                ),
+            )
+        )
+        
+        self.client.force_login(moderator)
+        
+        # Versuch, die eigene Gruppe zu bearbeiten sollte fehlschlagen
+        response = self.client.post(
+            reverse("permission_group_edit", args=[mod_group.pk]),
+            {"name": "Erweiteter Moderator", "sort_order": 1},
+        )
+        
+        # Sollte 403 Forbidden zurückgeben
+        self.assertEqual(response.status_code, 403)
+        
+        # Der Gruppennamen sollte nicht geändert sein
+        mod_group.refresh_from_db()
+        self.assertEqual(mod_group.name, "Moderator")
+
+    def test_user_cannot_delete_own_group(self):
+        """Nutzer darf seine eigene Gruppe nicht löschen."""
+        moderator = get_user_model().objects.create_user(username="moderator2")
+        mod_group = Group.objects.create(name="Moderator2")
+        moderator.groups.add(mod_group)
+        
+        # Geben Sie dem Moderator die Berechtigung zum Löschen von Gruppen
+        mod_group.permissions.add(
+            *Permission.objects.filter(
+                content_type__app_label="core",
+                codename="can_delete_permission_groups",
+            )
+        )
+        
+        self.client.force_login(moderator)
+        
+        # Versuch, die eigene Gruppe zu löschen sollte fehlschlagen
+        response = self.client.post(
+            reverse("permission_group_delete", args=[mod_group.pk]),
+        )
+        
+        # Sollte 403 Forbidden zurückgeben
+        self.assertEqual(response.status_code, 403)
+        
+        # Die Gruppe sollte noch existieren
+        self.assertTrue(Group.objects.filter(pk=mod_group.pk).exists())
+
+    def test_group_form_rejects_member_when_modifying_permissions(self):
+        """PermissionGroupForm ablehnt Änderungen, wenn Nutzer Gruppenmitglied ist."""
+        from ..forms import PermissionGroupForm
+        
+        moderator = get_user_model().objects.create_user(username="moderator3")
+        mod_group = Group.objects.create(name="Moderator3")
+        moderator.groups.add(mod_group)
+        
+        # Simuliere Formularinitialisierung und -validierung
+        form = PermissionGroupForm(
+            {"name": "Moderator3", "sort_order": 1},
+            instance=mod_group,
+            current_user=moderator,
+        )
+        
+        # Das Formular sollte nicht valide sein
+        self.assertFalse(form.is_valid())
+        # Sollte eine Fehlermeldung über Selbst-Mitgliedschaft haben
+        error_text = str(form.errors).lower()
+        self.assertIn("mitglied", error_text)

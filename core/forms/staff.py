@@ -483,12 +483,22 @@ class StaffUserForm(forms.ModelForm):
         )
 
     def clean(self):
-        """Verhindert, dass ein Administrator sein eigenes Konto deaktiviert."""
+        """Verhindert Privilegieneszkalation und validiert Passwortänderungen."""
         cleaned = super().clean()
         existing_administrator = is_administrator(self.instance)
         requested_administrator = bool(
             cleaned.get("is_administrator", existing_administrator)
         )
+        
+        # **SICHERHEIT**: Passwort-Feld darf nicht von oben überschrieben werden
+        if cleaned.get("password") and not self.can_save_rights:
+            password_allowed = has_access(self.current_user, "can_set_user_passwords")
+            if not password_allowed:
+                self.add_error(
+                    "password",
+                    "Dir fehlt das Recht, Passwörter zu setzen.",
+                )
+        
         if (
             requested_administrator
             and not existing_administrator
@@ -519,7 +529,7 @@ class StaffUserForm(forms.ModelForm):
         return cleaned
 
     def save(self, commit=True):
-        """Setzt ein neues Passwort nur, wenn ein nichtleerer Wert vorliegt."""
+        """Setzt ein neues Passwort nur, wenn ein nichtleerer Wert vorliegt und berechtigt."""
         user = super().save(commit=False)
         if self.can_manage_administrator:
             administrator = self.cleaned_data.get(
@@ -527,8 +537,16 @@ class StaffUserForm(forms.ModelForm):
             )
             user.is_superuser = administrator
             user.is_staff = administrator
+        
+        # **SICHERHEIT**: Passwort nur setzen wenn berechtigt und validiert
         if self.cleaned_data.get("password"):
-            user.set_password(self.cleaned_data["password"])
+            if has_access(self.current_user, "can_set_user_passwords"):
+                user.set_password(self.cleaned_data["password"])
+            else:
+                raise forms.ValidationError(
+                    "Unzureichende Berechtigung zum Setzen von Passwörtern."
+                )
+        
         if commit:
             user.save()
             if self.can_manage_groups:
@@ -584,13 +602,27 @@ class PermissionGroupForm(forms.ModelForm):
     def __init__(self, *args, **kwargs):
         """Markiert bestehende Rechte und lädt eine passende Sortierzahl."""
         self.current_user = kwargs.pop("current_user", None)
+        super().__init__(*args, **kwargs)
+        
         self.can_grant_group_permissions = is_administrator(
             self.current_user
         ) or has_access(self.current_user, "can_grant_group_permissions")
         self.can_revoke_group_permissions = is_administrator(
             self.current_user
         ) or has_access(self.current_user, "can_revoke_group_permissions")
-        super().__init__(*args, **kwargs)
+        self.protected_permission_ids = set()
+        
+        if self.instance.pk:
+            # Berechne protected_permission_ids bei Bearbeitung
+            if not is_administrator(self.current_user):
+                protected_permissions = Permission.objects.filter(
+                    content_type__app_label="core",
+                    codename__in=DELEGATION_CONTROL_CODES,
+                )
+                self.protected_permission_ids = set(
+                    protected_permissions.values_list("pk", flat=True)
+                )
+        
         if self.instance.pk:
             current_order = (
                 PermissionGroupSortOrder.objects.filter(
@@ -625,9 +657,10 @@ class PermissionGroupForm(forms.ModelForm):
         add_permission_checkboxes(self, selected_ids)
         for permission_id, field_name in self.permission_ids.items():
             selected = permission_id in selected_ids
+            is_protected = permission_id in self.protected_permission_ids
             if (selected and not self.can_revoke_group_permissions) or (
                 not selected and not self.can_grant_group_permissions
-            ):
+            ) or is_protected:
                 self.fields[field_name].disabled = True
         self.order_fields(["name", "sort_order", *self.permission_ids.values()])
 
@@ -639,6 +672,41 @@ class PermissionGroupForm(forms.ModelForm):
                 "Die Rolle Administrator ist reserviert und kann nicht bearbeitet werden."
             )
         return name
+
+    def clean(self):
+        """Validiert Hierarchie und Selbstprivilegienesca lation."""
+        cleaned = super().clean()
+        
+        if not self.instance.pk or is_administrator(self.current_user):
+            return cleaned
+        
+        # **SICHERHEIT**: Nutzer darf seine eigene Gruppe nicht bearbeiten
+        if self.current_user in self.instance.user_set.all():
+            # Benutzer ist Mitglied dieser Gruppe
+            raise forms.ValidationError(
+                "Du kannst keine Gruppe bearbeiten, in der du selbst Mitglied bist. "
+                "Dies verhindert Selbstprivilegien-Eskalation."
+            )
+        
+        # **SICHERHEIT**: Re-validiere protected_permission_ids zur Laufzeit
+        # (nicht nur bei Form-Initialisierung, falls sich Permissions changed haben)
+        protected_permissions = Permission.objects.filter(
+            content_type__app_label="core",
+            codename__in=DELEGATION_CONTROL_CODES,
+        )
+        protected_permission_ids = set(
+            protected_permissions.values_list("pk", flat=True)
+        )
+        
+        selected_ids = set(selected_permission_ids(self))
+        restricted_permissions = selected_ids & protected_permission_ids
+        if restricted_permissions:
+            raise forms.ValidationError(
+                "Du darfst keine Delegationskontroll-Rechte hinzufügen. "
+                "Diese sind nur Administratoren vorbehalten."
+            )
+        
+        return cleaned
 
     def save(self, commit=True):
         """Speichert die Gruppe und ersetzt ihre Rechteliste durch die Auswahl."""
