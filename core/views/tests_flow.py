@@ -257,6 +257,22 @@ def take_test(request, test_id):
     test = get_object_or_404(TestSession, pk=test_id)
     session_key = f"test_access_{test.pk}"
     name_session_key = f"test_name_{test.pk}"
+    
+    # Protokolliere jeden Zugriff auf Test-Fragen
+    if request.method == "GET" and request.session.get(session_key) == str(test.pk):
+        record_event(
+            request,
+            AuditLog.Category.REQUEST,
+            "test.questions.viewed",
+            f"Testfragen angezeigt.",
+            "test",
+            test.pk,
+            {
+                "pool": test.question_pool.name,
+                "session_id": request.session.session_key,
+            }
+        )
+    
     if test.status != TestSession.Status.ISSUED:
         return render(request, "core/test_unavailable.html", status=410)
     if request.session.get(session_key) != str(test.pk):
@@ -329,6 +345,16 @@ def take_test(request, test_id):
             TestSession.objects.filter(
                 pk=test.pk, status=TestSession.Status.ISSUED
             ).update(examinee_name=examinee_name)
+            # Protokolliere Nameneingabe
+            record_event(
+                request,
+                AuditLog.Category.TEST,
+                "test.examinee_identified",
+                "Prüfling-Name eingegeben.",
+                "test",
+                test.pk,
+                {"pool": test.question_pool.name}
+            )
             return redirect("take_test", test_id=test.pk)
         return render(
             request, "core/examinee_name.html", {"form": name_form, "test": test}
@@ -345,6 +371,19 @@ def take_test(request, test_id):
             posted = set(request.POST.getlist("confirm"))
             if posted == {str(index) for index in range(len(confirmations))}:
                 request.session[confirm_session_key] = True
+                # Protokolliere Test-Start (Bestätigungen gemacht)
+                record_event(
+                    request,
+                    AuditLog.Category.TEST,
+                    "test.started",
+                    "Test gestartet - alle Bestätigungen erledigt.",
+                    "test",
+                    test.pk,
+                    {
+                        "pool": test.question_pool.name,
+                        "time_limit_minutes": test.time_limit_minutes,
+                    }
+                )
                 return redirect("take_test", test_id=test.pk)
             missing = True
         else:
@@ -469,6 +508,18 @@ def running_tests(request):
             {"capability": "can_generate_test_from_pool"},
             status=403,
         )
+    
+    # Protokolliere Zugriff auf laufende Tests
+    record_event(
+        request,
+        AuditLog.Category.REQUEST,
+        "tests.running_list.viewed",
+        "Liste laufender Tests angezeigt.",
+        "view",
+        "running_tests",
+        {"accessible_pools": list(pools.values_list("id", "name"))}
+    )
+    
     now = timezone.now()
     # Ältere, nie abgegebene Zugänge gelten als verlassen und werden nicht mehr gelistet
     cutoff = now - timedelta(hours=RUNNING_TEST_WINDOW_HOURS)
@@ -508,6 +559,7 @@ def submissions(request):
             {"capability": "can_view_submissions_pool"},
             status=403,
         )
+    
     selected_pool_id = request.GET.get("pool", "")
     selected_pool = None
     if selected_pool_id:
@@ -526,6 +578,20 @@ def submissions(request):
                 {"capability": "can_view_submissions_pool"},
                 status=403,
             )
+    
+    # Protokolliere Zugriff auf Abgabenliste
+    record_event(
+        request,
+        AuditLog.Category.REQUEST,
+        "submissions.list.viewed",
+        "Liste der Testabgaben angezeigt.",
+        "view",
+        "submissions",
+        {
+            "selected_pool": selected_pool.name if selected_pool else None,
+            "accessible_pools": list(submission_pools.values_list("id", "name")),
+        }
+    )
     completed_tests = (
         TestSession.objects.filter(
             status=TestSession.Status.COMPLETED,
@@ -648,6 +714,22 @@ def submission_detail(request, test_id):
             {"capability": "can_view_submissions_pool"},
             status=403,
         )
+    
+    # Protokolliere Zugriff auf Abgabe
+    if request.method == "GET":
+        record_event(
+            request,
+            AuditLog.Category.REQUEST,
+            "submission.viewed",
+            "Testabgabe und Antworten angezeigt.",
+            "test",
+            test.pk,
+            {
+                "pool": test.question_pool.name,
+                "examinee_name": test.examinee_name,
+            }
+        )
+    
     answer_query = (
         Submission.objects.filter(test=test)
         .select_related("test_question", "graded_by")
@@ -696,7 +778,12 @@ def submission_detail(request, test_id):
                 updates.append((answer, score))
         else:
             with transaction.atomic():
+                # Sammle alle Änderungen für aggregiertes Logging
+                changes_summary = []
                 for answer, score in updates:
+                    old_score = answer.score
+                    old_needs_manual_grading = answer.needs_manual_grading
+                    
                     answer.score = score
                     answer.needs_manual_grading = False
                     answer.graded_by = request.user
@@ -709,19 +796,49 @@ def submission_detail(request, test_id):
                             "graded_at",
                         ]
                     )
+                    
+                    changes_summary.append({
+                        "question_position": answer.test_question.position,
+                        "old_score": str(old_score),
+                        "new_score": str(score),
+                        "old_needs_manual_grading": old_needs_manual_grading,
+                        "max_points": str(answer.test_question.points),
+                    })
+                    
+                    # Individuelles detailliertes Log pro Antwort
                     record_event(
                         request,
                         AuditLog.Category.SUBMISSION,
                         "submission.graded",
-                        "Antwortpunkte in der gemeinsamen Prüfungskorrektur gespeichert.",
+                        f"Antwort für Frage {answer.test_question.position} bewertet.",
                         "submission",
-                        answer.pk,
+                        str(answer.pk),
                         {
                             "test_id": str(test.pk),
                             "question_position": answer.test_question.position,
-                            "score": str(score),
+                            "old_score": str(old_score),
+                            "new_score": str(score),
+                            "old_needs_manual_grading": old_needs_manual_grading,
+                            "max_points": str(answer.test_question.points),
                         },
                     )
+                
+                # Aggregiertes Log für die komplette Grading-Session
+                record_event(
+                    request,
+                    AuditLog.Category.SUBMISSION,
+                    "submission.graded_batch",
+                    f"Testabgabe bewertet: {len(changes_summary)} Antworten aktualisiert.",
+                    "test",
+                    test.pk,
+                    {
+                        "pool": test.question_pool.name,
+                        "examinee_name": test.examinee_name,
+                        "changes_count": len(changes_summary),
+                        "changes": changes_summary,
+                    },
+                )
+            
             messages.success(request, "Punkte für den Test wurden gespeichert.")
             detail_url = reverse("submission_detail", args=[test.pk])
             filter_query = request.GET.urlencode()

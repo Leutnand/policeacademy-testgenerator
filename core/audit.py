@@ -33,6 +33,57 @@ def record_event(
     )
 
 
+def record_access(request, category, action, description="", object_type="", object_id="", metadata=None):
+    """
+    Speichert Zugriffe auf geschützte Daten (GET-Anfragen auf sensitive Views).
+    Wird hauptsächlich von Middleware für automatisches Logging verwendet.
+    """
+    user = getattr(request, "user", None)
+    actor = user if user and user.is_authenticated else None
+    if not description:
+        description = f"Zugriff auf {object_type}" if object_type else "Geschützte Ressource abgerufen"
+    
+    return AuditLog.objects.create(
+        actor=actor,
+        category=category,
+        action=action,
+        description=description,
+        object_type=object_type,
+        object_id=str(object_id) if object_id else "",
+        ip_address=client_ip(request),
+        user_agent=request.META.get("HTTP_USER_AGENT", "")[:512],
+        metadata=metadata or {},
+    )
+
+
+def record_change(request, category, action, description, before, after, object_type="", object_id="", metadata=None):
+    """
+    Speichert Änderungen mit Vorher/Nachher-Vergleich.
+    Ideal für Detailänderungen mit Differenzen.
+    """
+    user = getattr(request, "user", None)
+    actor = user if user and user.is_authenticated else None
+    
+    # Füge Vorher/Nachher zu metadata hinzu
+    full_metadata = metadata or {}
+    full_metadata['changes'] = {
+        'before': before,
+        'after': after,
+    }
+    
+    return AuditLog.objects.create(
+        actor=actor,
+        category=category,
+        action=action,
+        description=description,
+        object_type=object_type,
+        object_id=str(object_id) if object_id else "",
+        ip_address=client_ip(request),
+        user_agent=request.META.get("HTTP_USER_AGENT", "")[:512],
+        metadata=full_metadata,
+    )
+
+
 def prune_audit_logs(now=None):
     """Entfernt abgelaufene Einträge und bewahrt höchstens die neuesten Protokolle."""
     now = now or timezone.now()

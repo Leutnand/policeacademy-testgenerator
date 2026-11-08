@@ -43,14 +43,32 @@ def admin_dashboard(request):
         return render(
             request, "core/403.html", {"capability": "can_view_pool"}, status=403
         )
+    
+    # Protokolliere Zugriff auf Fragenbank
+    search_query = request.GET.get("q", "").strip()[:120]
+    question_type = request.GET.get("type", "")
+    pinned_filter = request.GET.get("pinned", "")
+    
+    record_event(
+        request,
+        AuditLog.Category.REQUEST,
+        "questions.list.viewed",
+        "Fragenbank-Übersicht angezeigt.",
+        "pool",
+        selected_pool.pk if selected_pool else None,
+        {
+            "pool_name": selected_pool.name if selected_pool else None,
+            "search_query_used": bool(search_query),
+            "type_filter": question_type or None,
+            "pinned_filter": pinned_filter or None,
+        }
+    )
+    
     questions = (
         Question.objects.filter(question_pool=selected_pool)
         if selected_pool
         else Question.objects.none()
     )
-    search_query = request.GET.get("q", "").strip()[:120]
-    question_type = request.GET.get("type", "")
-    pinned_filter = request.GET.get("pinned", "")
     if search_query:
         questions = questions.filter(text__icontains=search_query)
     if question_type in Question.Type.values:
@@ -140,6 +158,22 @@ def question_export(request, pool_id):
             {"capability": "can_export_questions_pool"},
             status=403,
         )
+    
+    # Protokolliere Fragen-Export
+    question_count = Question.objects.filter(question_pool=question_pool).count()
+    record_event(
+        request,
+        AuditLog.Category.REQUEST,
+        "questions.exported",
+        f"{question_count} Fragen aus Pool exportiert.",
+        "pool",
+        question_pool.pk,
+        {
+            "pool_name": question_pool.name,
+            "exported_count": question_count,
+        }
+    )
+    
     response = HttpResponse(content_type="text/csv; charset=utf-8")
     response["Content-Disposition"] = (
         f'attachment; filename="questions-pool-{question_pool.pk}.csv"'
@@ -354,17 +388,24 @@ def question_import(request, pool_id):
     with transaction.atomic():
         if imported_questions:
             Question.objects.bulk_create(imported_questions)
+        
+        # Detailliertes Import-Logging
+        import_summary = {
+            "pool_name": question_pool.name,
+            "imported_count": len(imported_questions),
+            "skipped_duplicates": skipped_duplicates,
+            "valid_row_count": valid_question_count,
+            "error_count": len(errors),
+        }
+        
         record_event(
             request,
             AuditLog.Category.QUESTION,
             "question.csv.imported",
-            "CSV-Fragenimport abgeschlossen.",
+            f"CSV-Import abgeschlossen: {len(imported_questions)} neue Fragen hinzugefügt, {skipped_duplicates} Duplikate übersprungen.",
             "question_pool",
             question_pool.pk,
-            {
-                "count": len(imported_questions),
-                "skipped_duplicates": skipped_duplicates,
-            },
+            import_summary,
         )
     if imported_questions:
         summary = f"{len(imported_questions)} Fragen wurden ergänzt."

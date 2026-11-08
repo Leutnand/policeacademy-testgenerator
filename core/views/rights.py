@@ -108,25 +108,36 @@ def permission_group_edit(request, pk):
             status=403,
         )
     
+    # Speichere alte Rechte für Änderungsprotokoll
+    old_permissions = set(group.permissions.values_list("codename", flat=True))
+    
     form = PermissionGroupForm(
         request.POST or None, instance=group, current_user=request.user
     )
     if form.is_valid():
         with transaction.atomic():
             group = form.save()
+            new_permissions = set(group.permissions.values_list("codename", flat=True))
+            
+            # Detaillierte Änderungsverfolgung
+            added_perms = new_permissions - old_permissions
+            removed_perms = old_permissions - new_permissions
+            
+            change_details = {
+                "added_permissions": sorted(list(added_perms)) if added_perms else [],
+                "removed_permissions": sorted(list(removed_perms)) if removed_perms else [],
+                "current_permissions": sorted(list(new_permissions)),
+                "member_count": group.user_set.count(),
+            }
+            
             record_event(
                 request,
                 AuditLog.Category.STAFF,
                 "permission_group.updated",
-                "Rechtegruppe und zugehörige Rechte aktualisiert.",
+                f"Rechtegruppe aktualisiert: {len(added_perms)} hinzugefügt, {len(removed_perms)} entfernt.",
                 "group",
                 group.pk,
-                {
-                    "name": group.name,
-                    "permissions": list(
-                        group.permissions.values_list("codename", flat=True)
-                    ),
-                },
+                change_details,
             )
         messages.success(request, "Rechtegruppe wurde aktualisiert.")
         return redirect("permissions_dashboard")
@@ -202,6 +213,11 @@ def permission_user_edit(request, pk):
             status=403,
         )
     user = get_object_or_404(User, pk=pk)
+    
+    # Speichere alte Werte für Änderungsverfolgung
+    old_groups = set(user.groups.values_list("name", flat=True))
+    old_direct_perms = set(user.user_permissions.values_list("codename", flat=True))
+    
     form = StaffUserForm(
         request.POST or None,
         instance=user,
@@ -211,21 +227,36 @@ def permission_user_edit(request, pk):
     if form.is_valid():
         with transaction.atomic():
             user = form.save()
+            
+            # Neue Werte nach Speichern
+            new_groups = set(user.groups.values_list("name", flat=True))
+            new_direct_perms = set(user.user_permissions.values_list("codename", flat=True))
+            
+            # Berechne Unterschiede
+            added_groups = new_groups - old_groups
+            removed_groups = old_groups - new_groups
+            added_perms = new_direct_perms - old_direct_perms
+            removed_perms = old_direct_perms - new_direct_perms
+            
+            change_details = {
+                "username": user.username,
+                "is_administrator": is_administrator(user),
+                "added_groups": sorted(list(added_groups)) if added_groups else [],
+                "removed_groups": sorted(list(removed_groups)) if removed_groups else [],
+                "added_direct_permissions": sorted(list(added_perms)) if added_perms else [],
+                "removed_direct_permissions": sorted(list(removed_perms)) if removed_perms else [],
+                "current_groups": sorted(list(new_groups)),
+                "current_direct_permissions": sorted(list(new_direct_perms)),
+            }
+            
             record_event(
                 request,
                 AuditLog.Category.STAFF,
                 "staff.permissions.updated",
-                "Mitarbeitergruppen und Direktrechte aktualisiert.",
+                f"Mitarbeiterrechte aktualisiert: {len(added_groups)} Gruppen hinzugefügt, {len(removed_groups)} entfernt.",
                 "user",
                 user.pk,
-                {
-                    "username": user.username,
-                    "is_administrator": is_administrator(user),
-                    "groups": list(user.groups.values_list("name", flat=True)),
-                    "direct_permissions": list(
-                        user.user_permissions.values_list("codename", flat=True)
-                    ),
-                },
+                change_details,
             )
         messages.success(request, "Zugriffsrechte wurden gespeichert.")
         return redirect("users_dashboard")
