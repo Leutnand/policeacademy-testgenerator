@@ -6,3 +6,10 @@ staticfiles/
 .env
 .ruff_cache/
 .mypy_cache/
+docs/SECURITY_FIXES.md
+docs/SECURITY_AUDIT_REPORT.md
+docs/LOGGING_VISUAL_GUIDE.md
+docs/LOGGING_SUMMARY.md
+docs/LOGGING_QUICKREF.md
+docs/LOGGING_IMPLEMENTATION_COMPLETE.md
+docs/LOGGING_ENHANCEMENTS.md
