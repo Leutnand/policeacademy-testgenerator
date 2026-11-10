@@ -116,6 +116,7 @@ class SubmissionAndPoolViewTests(TestCase):
         self.assertContains(response, "Musterlösung")
         self.assertContains(response, "Erwartete Musterlösung")
         self.assertContains(response, f'name="score_{test.submissions.get().pk}"')
+        self.assertContains(response, 'step="0.25"')
         self.assertContains(response, 'value="2.00"')
         response = self.client.post(
             detail_url, {f"score_{test.submissions.get().pk}": "1.25"}

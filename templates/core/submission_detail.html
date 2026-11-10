@@ -82,7 +82,7 @@
                        name="score_{{ answer.pk }}"
                        min="0"
                        max="{{ answer.test_question.points|unlocalize }}"
-                       step="0.01"
+                       step="0.25"
                        value="{% if answer.form_score_is_posted %}{{ answer.form_score }}{% else %}{{ answer.score|unlocalize|default_if_none:'' }}{% endif %}"
                        placeholder="Noch nicht bewertet">
                 <span>/ {{ answer.test_question.points }}</span>
